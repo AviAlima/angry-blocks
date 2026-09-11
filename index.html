@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Angry Blocks</title>
+  <meta name="description" content="A physics slingshot game — fling birds, topple towers, pop pigs." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Angry <span class="bird">Blocks</span></h1>
+    <div class="hud">
+      <div class="pill" id="score">Score: 0</div>
+      <div class="pill" id="birds">Birds: 3</div>
+      <button id="reset">Restart</button>
+    </div>
+  </header>
+
+  <div class="stage">
+    <canvas id="game" width="1000" height="600"></canvas>
+    <div class="overlay" id="overlay">
+      <h2 id="overlay-title">Level Clear!</h2>
+      <p id="overlay-text">Score: 0</p>
+      <button id="overlay-btn">Play Again</button>
+    </div>
+  </div>
+
+  <p class="hint">Drag the bird back from the slingshot and release to launch. Squash all the pigs to win.</p>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
