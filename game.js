@@ -68,8 +68,9 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
   var slowmo = 0, impact = null, trailTick = 0;
   var birdQueue = [];
   var currentLevel = 0;
-  var unlocked = 1;
+  var currentWorld = 0;
   var starsByLevel = {};
+  var LEVELS_PER_WORLD = 6;
   var muted = false;
   var simMode = false;
   var gen = 0;
@@ -181,6 +182,31 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
   function pigAt(cx, bottom, type) {
     var r = (PIG_TYPES[type] || PIG_TYPES.small).r;
     return makePig(cx, bottom - r, type);
+  }
+
+  function hut(cx, bottom, kind, pigType, legH) {
+    legH = legH || 74;
+    beam(cx - 44, bottom, 16, legH, kind);
+    beam(cx + 44, bottom, 16, legH, kind);
+    beam(cx, bottom - legH, 118, 14, kind);
+    if (pigType) pigAt(cx, bottom, pigType);
+  }
+
+  function tower(cx, bottom, tiers, kind, pigs) {
+    var th = 68;
+    for (var i = 0; i < tiers; i++) {
+      var b = bottom - i * th;
+      beam(cx - 38, b, 15, th, kind);
+      beam(cx + 38, b, 15, th, kind);
+      beam(cx, b - th, 108, 13, kind);
+      if (pigs && pigs[i]) pigAt(cx, b, pigs[i]);
+    }
+  }
+
+  function gate(cx, bottom, span, legH, kind) {
+    beam(cx - span / 2, bottom, 18, legH, kind);
+    beam(cx + span / 2, bottom, 18, legH, kind);
+    beam(cx, bottom - legH, span + 18, 16, kind);
   }
 
   function makeDebris(x, y, w, h, kind, vx, vy) {
@@ -497,6 +523,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
 
   function buildLevel(idx) {
     var lvl = LEVELS[idx];
+    currentWorld = worldIndexOf(idx);
     rngState = 0x2545f491;
     score = 0;
     birdQueue = lvl.birds.slice();
@@ -505,6 +532,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     spawnNextBird();
     updateHud();
     updateLevelBar();
+    updateWorldTitle();
   }
 
   function spawnNextBird() {
@@ -549,12 +577,15 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     if (remaining >= 1 && remaining < 2) stars = 2;
     stars = clamp(stars, 1, 3);
     starsByLevel[currentLevel] = Math.max(starsByLevel[currentLevel] || 0, stars);
-    if (currentLevel + 1 >= unlocked) unlocked = Math.min(LEVELS.length, currentLevel + 2);
     saveProgress();
     updateHud();
     updateLevelBar();
+    buildWorldMap();
     sfxWin();
-    showOverlay("Level Clear!", "Score " + score + (bonus ? "  (+" + bonus + " bonus)" : ""), currentLevel + 1 < LEVELS.length ? "Next Level" : "Play Again", true, stars);
+    var isLast = currentLevel + 1 >= LEVELS.length;
+    var endOfWorld = (currentLevel % LEVELS_PER_WORLD) === LEVELS_PER_WORLD - 1;
+    var btn = isLast ? "Play Again" : (endOfWorld ? "Next World" : "Next Level");
+    showOverlay("Level Clear!", "Score " + score + (bonus ? "  (+" + bonus + " bonus)" : ""), btn, true, stars);
   }
 
   function showOverlay(title, text, btn, isWin, stars) {
@@ -583,137 +614,619 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
 
   function persistKey() { return "angryblocks.progress.v1"; }
   function saveProgress() {
-    try { localStorage.setItem(persistKey(), JSON.stringify({ unlocked: unlocked, stars: starsByLevel })); } catch (e) {}
+    try { localStorage.setItem(persistKey(), JSON.stringify({ stars: starsByLevel })); } catch (e) {}
   }
   function loadProgress() {
     try {
       var raw = localStorage.getItem(persistKey());
       if (!raw) return;
       var p = JSON.parse(raw);
-      unlocked = clamp(p.unlocked || 1, 1, LEVELS.length);
       starsByLevel = p.stars || {};
     } catch (e) {}
   }
 
-  var LEVELS = [
+  var WORLDS = [
     {
       name: "Timber Yard",
-      birds: ["red", "red", "yellow", "red", "blue"],
-      build: function () {
-        var bx = 650;
-        beam(bx, GROUND_Y, 22, 120, "wood");
-        beam(bx + 130, GROUND_Y, 22, 120, "wood");
-        beam(bx + 65, GROUND_Y - 120, 174, 20, "wood");
-        beam(bx + 25, GROUND_Y - 140, 20, 80, "wood");
-        beam(bx + 105, GROUND_Y - 140, 20, 80, "wood");
-        beam(bx + 65, GROUND_Y - 220, 120, 20, "wood");
-        pigAt(bx + 65, GROUND_Y, "small");
-        pigAt(bx + 65, GROUND_Y - 140, "medium");
-        pigAt(bx + 65, GROUND_Y - 240, "small");
-        beam(bx + 205, GROUND_Y, 44, 44, "tnt");
-      }
+      icon: "\uD83C\uDF33",
+      a: "#ca8b4d", b: "#7a5230", desc: "Splinter the wooden scaffolds.",
+      levels: [
+        {
+          name: "Timber Yard",
+          birds: ["red", "red", "yellow", "red", "blue"],
+          build: function () {
+            var bx = 650;
+            beam(bx, GROUND_Y, 22, 120, "wood");
+            beam(bx + 130, GROUND_Y, 22, 120, "wood");
+            beam(bx + 65, GROUND_Y - 120, 174, 20, "wood");
+            beam(bx + 25, GROUND_Y - 140, 20, 80, "wood");
+            beam(bx + 105, GROUND_Y - 140, 20, 80, "wood");
+            beam(bx + 65, GROUND_Y - 220, 120, 20, "wood");
+            pigAt(bx + 65, GROUND_Y, "small");
+            pigAt(bx + 65, GROUND_Y - 140, "medium");
+            pigAt(bx + 65, GROUND_Y - 240, "small");
+            beam(bx + 205, GROUND_Y, 44, 44, "tnt");
+          }
+        },
+        {
+          name: "Sawmill",
+          birds: ["red", "red", "yellow", "blue"],
+          build: function () {
+            var bx = 650;
+            hut(bx - 80, GROUND_Y, "wood", "small");
+            hut(bx + 80, GROUND_Y, "wood", "medium");
+            beam(bx, GROUND_Y - 88, 230, 16, "wood");
+            pigAt(bx, GROUND_Y - 104, "small");
+          }
+        },
+        {
+          name: "Log Tower",
+          birds: ["red", "yellow", "red", "blue"],
+          build: function () {
+            var bx = 660;
+            tower(bx, GROUND_Y, 3, "wood", ["small", "small", "medium"]);
+            beam(bx + 160, GROUND_Y, 40, 44, "tnt");
+            pigAt(bx + 160, GROUND_Y - 44, "small");
+          }
+        },
+        {
+          name: "Bridge Works",
+          birds: ["red", "yellow", "red", "red"],
+          build: function () {
+            var bx = 640;
+            gate(bx - 90, GROUND_Y, 120, 90, "wood");
+            gate(bx + 90, GROUND_Y, 120, 90, "wood");
+            beam(bx, GROUND_Y - 90, 300, 18, "wood");
+            pigAt(bx - 90, GROUND_Y, "small");
+            pigAt(bx + 90, GROUND_Y, "small");
+            pigAt(bx, GROUND_Y - 108, "medium");
+          }
+        },
+        {
+          name: "Fort Timber",
+          birds: ["red", "red", "yellow", "blue", "red"],
+          build: function () {
+            var bx = 660;
+            beam(bx - 90, GROUND_Y, 20, 110, "wood");
+            beam(bx + 90, GROUND_Y, 20, 110, "wood");
+            beam(bx, GROUND_Y - 110, 210, 20, "wood");
+            hut(bx, GROUND_Y, "wood", "small", 60);
+            beam(bx, GROUND_Y - 130, 140, 18, "wood");
+            pigAt(bx - 60, GROUND_Y - 148, "small");
+            pigAt(bx + 60, GROUND_Y - 148, "small");
+            beam(bx + 210, GROUND_Y, 44, 44, "tnt");
+          }
+        },
+        {
+          name: "Timber Keep",
+          birds: ["red", "yellow", "red", "blue", "red"],
+          build: function () {
+            var bx = 650;
+            tower(bx - 70, GROUND_Y, 2, "wood", ["small", "small"]);
+            tower(bx + 70, GROUND_Y, 3, "wood", [null, "small", "medium"]);
+            beam(bx, GROUND_Y - 204, 220, 20, "wood");
+            pigAt(bx, GROUND_Y - 224, "big");
+            beam(bx + 220, GROUND_Y, 44, 44, "tnt");
+          }
+        }
+      ]
     },
     {
       name: "Ice Fortress",
-      birds: ["red", "yellow", "blue", "red", "black", "blue"],
-      build: function () {
-        var bx = 650;
-        beam(bx, GROUND_Y, 22, 100, "wood");
-        beam(bx + 150, GROUND_Y, 22, 100, "wood");
-        beam(bx + 75, GROUND_Y - 100, 200, 20, "stone");
-        beam(bx + 40, GROUND_Y - 120, 18, 70, "ice");
-        beam(bx + 110, GROUND_Y - 120, 18, 70, "ice");
-        beam(bx + 75, GROUND_Y - 190, 100, 16, "ice");
-        beam(bx + 110, GROUND_Y, 40, 44, "tnt");
-        pigAt(bx + 50, GROUND_Y, "medium");
-        pigAt(bx + 75, GROUND_Y - 206, "small");
-        pigAt(bx + 150, GROUND_Y - 120, "helmet");
-      }
+      icon: "\u2744\uFE0F",
+      a: "#a9e6ff", b: "#3f7fa6", desc: "Shatter the frozen walls.",
+      levels: [
+        {
+          name: "Ice Fortress",
+          birds: ["red", "yellow", "blue", "red", "black", "blue"],
+          build: function () {
+            var bx = 650;
+            beam(bx, GROUND_Y, 22, 100, "wood");
+            beam(bx + 150, GROUND_Y, 22, 100, "wood");
+            beam(bx + 75, GROUND_Y - 100, 200, 20, "stone");
+            beam(bx + 40, GROUND_Y - 120, 18, 70, "ice");
+            beam(bx + 110, GROUND_Y - 120, 18, 70, "ice");
+            beam(bx + 75, GROUND_Y - 190, 100, 16, "ice");
+            beam(bx + 110, GROUND_Y, 40, 44, "tnt");
+            pigAt(bx + 50, GROUND_Y, "medium");
+            pigAt(bx + 75, GROUND_Y - 206, "small");
+            pigAt(bx + 150, GROUND_Y - 120, "helmet");
+          }
+        },
+        {
+          name: "Frozen Hut",
+          birds: ["red", "yellow", "blue", "black"],
+          build: function () {
+            var bx = 640;
+            hut(bx - 80, GROUND_Y, "ice", "small");
+            hut(bx + 80, GROUND_Y, "wood", "small");
+            beam(bx, GROUND_Y - 88, 200, 16, "ice");
+            pigAt(bx, GROUND_Y - 104, "medium");
+            beam(bx + 190, GROUND_Y, 40, 44, "tnt");
+          }
+        },
+        {
+          name: "Slippery Slope",
+          birds: ["blue", "red", "yellow", "blue"],
+          build: function () {
+            var bx = 650;
+            beam(bx - 70, GROUND_Y, 18, 90, "ice");
+            beam(bx + 70, GROUND_Y, 18, 90, "ice");
+            beam(bx, GROUND_Y - 90, 170, 16, "stone");
+            beam(bx - 30, GROUND_Y - 106, 16, 60, "glass");
+            beam(bx + 30, GROUND_Y - 106, 16, 60, "glass");
+            beam(bx, GROUND_Y - 166, 90, 14, "ice");
+            pigAt(bx, GROUND_Y, "small");
+            pigAt(bx, GROUND_Y - 106, "small");
+            pigAt(bx, GROUND_Y - 180, "small");
+          }
+        },
+        {
+          name: "Glacier Gate",
+          birds: ["blue", "red", "black", "yellow", "blue"],
+          build: function () {
+            var bx = 650;
+            gate(bx - 95, GROUND_Y, 130, 100, "ice");
+            gate(bx + 95, GROUND_Y, 130, 100, "ice");
+            beam(bx, GROUND_Y - 100, 320, 18, "stone");
+            pigAt(bx - 95, GROUND_Y, "small");
+            pigAt(bx + 95, GROUND_Y, "medium");
+            pigAt(bx, GROUND_Y - 118, "small");
+            beam(bx - 230, GROUND_Y, 40, 44, "tnt");
+          }
+        },
+        {
+          name: "Ice Citadel",
+          birds: ["black", "blue", "yellow", "blue", "red"],
+          build: function () {
+            var bx = 650;
+            tower(bx - 70, GROUND_Y, 2, "ice", ["small", "small"]);
+            tower(bx + 70, GROUND_Y, 2, "ice", [null, "medium"]);
+            beam(bx, GROUND_Y - 136, 230, 18, "glass");
+            beam(bx, GROUND_Y - 154, 18, 70, "stone");
+            pigAt(bx, GROUND_Y - 224, "small");
+            beam(bx + 200, GROUND_Y, 44, 44, "tnt");
+          }
+        },
+        {
+          name: "Deep Freeze",
+          birds: ["blue", "black", "blue", "yellow", "blue", "red"],
+          build: function () {
+            var bx = 640;
+            beam(bx - 120, GROUND_Y, 20, 120, "ice");
+            beam(bx, GROUND_Y, 20, 120, "ice");
+            beam(bx + 120, GROUND_Y, 20, 120, "ice");
+            beam(bx, GROUND_Y - 120, 300, 20, "stone");
+            hut(bx - 60, GROUND_Y, "glass", null, 60);
+            hut(bx + 60, GROUND_Y, "glass", null, 60);
+            pigAt(bx - 60, GROUND_Y, "medium");
+            pigAt(bx + 60, GROUND_Y, "medium");
+            pigAt(bx - 30, GROUND_Y - 140, "small");
+            pigAt(bx + 30, GROUND_Y - 140, "small");
+            beam(bx + 230, GROUND_Y, 44, 44, "tnt");
+          }
+        }
+      ]
     },
     {
       name: "Stone Skyline",
-      birds: ["yellow", "black", "blue", "red", "red", "red"],
-      build: function () {
-        var bx = 680;
-        beam(bx, GROUND_Y, 24, 110, "stone");
-        beam(bx + 120, GROUND_Y, 24, 110, "stone");
-        beam(bx + 240, GROUND_Y, 24, 110, "wood");
-        beam(bx + 55, GROUND_Y - 110, 120, 20, "wood");
-        beam(bx + 185, GROUND_Y - 110, 120, 20, "wood");
-        beam(bx + 55, GROUND_Y - 130, 20, 80, "stone");
-        beam(bx + 185, GROUND_Y - 130, 20, 80, "stone");
-        beam(bx + 120, GROUND_Y - 210, 180, 20, "stone");
-        beam(bx + 80, GROUND_Y - 130, 40, 44, "tnt");
-        pigAt(bx + 20, GROUND_Y - 130, "medium");
-        pigAt(bx + 220, GROUND_Y - 130, "medium");
-        pigAt(bx + 120, GROUND_Y - 230, "small");
-        pigAt(bx + 180, GROUND_Y, "medium");
-      }
+      icon: "\uD83C\uDFD9\uFE0F",
+      a: "#9aa3ad", b: "#5a636e", desc: "Topple the concrete towers.",
+      levels: [
+        {
+          name: "Stone Skyline",
+          birds: ["yellow", "black", "blue", "red", "red", "red"],
+          build: function () {
+            var bx = 680;
+            beam(bx, GROUND_Y, 24, 110, "stone");
+            beam(bx + 120, GROUND_Y, 24, 110, "stone");
+            beam(bx + 240, GROUND_Y, 24, 110, "wood");
+            beam(bx + 55, GROUND_Y - 110, 120, 20, "wood");
+            beam(bx + 185, GROUND_Y - 110, 120, 20, "wood");
+            beam(bx + 55, GROUND_Y - 130, 20, 80, "stone");
+            beam(bx + 185, GROUND_Y - 130, 20, 80, "stone");
+            beam(bx + 120, GROUND_Y - 210, 180, 20, "stone");
+            beam(bx + 80, GROUND_Y - 130, 40, 44, "tnt");
+            pigAt(bx + 20, GROUND_Y - 130, "medium");
+            pigAt(bx + 220, GROUND_Y - 130, "medium");
+            pigAt(bx + 120, GROUND_Y - 230, "small");
+            pigAt(bx + 180, GROUND_Y, "medium");
+          }
+        },
+        {
+          name: "Brick Hut",
+          birds: ["yellow", "black", "red", "blue"],
+          build: function () {
+            var bx = 650;
+            hut(bx - 80, GROUND_Y, "stone", "small");
+            hut(bx + 80, GROUND_Y, "stone", "medium");
+            beam(bx, GROUND_Y - 88, 220, 18, "stone");
+            pigAt(bx, GROUND_Y - 106, "small");
+          }
+        },
+        {
+          name: "Quarry",
+          birds: ["black", "yellow", "blue", "red"],
+          build: function () {
+            var bx = 650;
+            tower(bx, GROUND_Y, 2, "stone", ["small", "medium"]);
+            beam(bx + 170, GROUND_Y, 60, 60, "stone");
+            beam(bx + 170, GROUND_Y - 60, 44, 44, "tnt");
+            pigAt(bx - 150, GROUND_Y, "small");
+          }
+        },
+        {
+          name: "Stone Gate",
+          birds: ["yellow", "black", "red", "blue", "red"],
+          build: function () {
+            var bx = 650;
+            gate(bx - 100, GROUND_Y, 140, 110, "stone");
+            gate(bx + 100, GROUND_Y, 140, 110, "stone");
+            beam(bx, GROUND_Y - 110, 340, 20, "wood");
+            beam(bx, GROUND_Y - 130, 20, 80, "stone");
+            pigAt(bx - 100, GROUND_Y, "small");
+            pigAt(bx + 100, GROUND_Y, "small");
+            pigAt(bx, GROUND_Y - 210, "medium");
+          }
+        },
+        {
+          name: "Monolith",
+          birds: ["black", "yellow", "black", "blue", "red"],
+          build: function () {
+            var bx = 660;
+            beam(bx, GROUND_Y, 40, 130, "stone");
+            beam(bx - 90, GROUND_Y, 20, 90, "wood");
+            beam(bx + 90, GROUND_Y, 20, 90, "wood");
+            beam(bx, GROUND_Y - 130, 240, 20, "stone");
+            pigAt(bx, GROUND_Y - 150, "small");
+            pigAt(bx - 90, GROUND_Y, "small");
+            pigAt(bx + 90, GROUND_Y, "small");
+            beam(bx + 200, GROUND_Y, 40, 44, "tnt");
+          }
+        },
+        {
+          name: "Stone Crown",
+          birds: ["black", "yellow", "black", "red", "blue", "yellow"],
+          build: function () {
+            var bx = 650;
+            tower(bx - 80, GROUND_Y, 2, "stone", ["small", "small"]);
+            tower(bx + 80, GROUND_Y, 3, "stone", [null, "small", "medium"]);
+            beam(bx, GROUND_Y - 204, 260, 20, "stone");
+            pigAt(bx - 40, GROUND_Y - 224, "small");
+            pigAt(bx + 40, GROUND_Y - 224, "small");
+            beam(bx + 240, GROUND_Y, 44, 44, "tnt");
+            pigAt(bx, GROUND_Y, "helmet");
+          }
+        }
+      ]
     },
     {
       name: "Bunker Hill",
-      birds: ["black", "yellow", "black", "blue", "red"],
-      build: function () {
-        var bx = 660;
-        beam(bx, GROUND_Y, 26, 120, "metal");
-        beam(bx + 160, GROUND_Y, 26, 120, "metal");
-        beam(bx + 80, GROUND_Y - 120, 200, 24, "stone");
-        beam(bx + 30, GROUND_Y - 144, 22, 90, "wood");
-        beam(bx + 130, GROUND_Y - 144, 22, 90, "wood");
-        beam(bx + 80, GROUND_Y - 234, 140, 22, "stone");
-        beam(bx + 40, GROUND_Y - 144, 40, 44, "tnt");
-        pigAt(bx + 80, GROUND_Y - 144, "helmet");
-        pigAt(bx + 80, GROUND_Y - 256, "medium");
-        pigAt(bx + 160, GROUND_Y, "small");
-        beam(bx + 240, GROUND_Y, 40, 120, "wood");
-        beam(bx + 240, GROUND_Y - 120, 40, 44, "tnt");
-      }
+      icon: "\uD83D\uDEE1\uFE0F",
+      a: "#8f97a4", b: "#3c434d", desc: "Crack the armored bunkers.",
+      levels: [
+        {
+          name: "Bunker Hill",
+          birds: ["black", "yellow", "black", "blue", "red"],
+          build: function () {
+            var bx = 660;
+            beam(bx, GROUND_Y, 26, 120, "metal");
+            beam(bx + 160, GROUND_Y, 26, 120, "metal");
+            beam(bx + 80, GROUND_Y - 120, 200, 24, "stone");
+            beam(bx + 30, GROUND_Y - 144, 22, 90, "wood");
+            beam(bx + 130, GROUND_Y - 144, 22, 90, "wood");
+            beam(bx + 80, GROUND_Y - 234, 140, 22, "stone");
+            beam(bx + 40, GROUND_Y - 144, 40, 44, "tnt");
+            pigAt(bx + 80, GROUND_Y - 144, "helmet");
+            pigAt(bx + 80, GROUND_Y - 256, "medium");
+            pigAt(bx + 160, GROUND_Y, "small");
+            beam(bx + 240, GROUND_Y, 40, 120, "wood");
+            beam(bx + 240, GROUND_Y - 120, 40, 44, "tnt");
+          }
+        },
+        {
+          name: "Steel Hut",
+          birds: ["black", "yellow", "black", "red"],
+          build: function () {
+            var bx = 650;
+            hut(bx - 80, GROUND_Y, "metal", "small");
+            hut(bx + 80, GROUND_Y, "metal", "small");
+            beam(bx, GROUND_Y - 88, 220, 18, "stone");
+            pigAt(bx, GROUND_Y - 106, "medium");
+          }
+        },
+        {
+          name: "Armory",
+          birds: ["black", "black", "yellow", "blue", "red"],
+          build: function () {
+            var bx = 650;
+            beam(bx - 70, GROUND_Y, 24, 100, "metal");
+            beam(bx + 70, GROUND_Y, 24, 100, "metal");
+            beam(bx, GROUND_Y - 100, 190, 20, "stone");
+            pigAt(bx, GROUND_Y, "helmet");
+            pigAt(bx, GROUND_Y - 120, "small");
+            beam(bx + 180, GROUND_Y, 44, 44, "tnt");
+          }
+        },
+        {
+          name: "Blast Wall",
+          birds: ["black", "yellow", "black", "blue", "red"],
+          build: function () {
+            var bx = 650;
+            gate(bx - 100, GROUND_Y, 140, 100, "metal");
+            gate(bx + 100, GROUND_Y, 140, 100, "metal");
+            beam(bx, GROUND_Y - 100, 340, 20, "stone");
+            pigAt(bx - 100, GROUND_Y, "small");
+            pigAt(bx + 100, GROUND_Y, "small");
+            beam(bx, GROUND_Y - 120, 44, 44, "tnt");
+          }
+        },
+        {
+          name: "Fortress",
+          birds: ["black", "black", "yellow", "blue", "red", "black"],
+          build: function () {
+            var bx = 650;
+            beam(bx - 110, GROUND_Y, 22, 120, "metal");
+            beam(bx + 110, GROUND_Y, 22, 120, "metal");
+            beam(bx, GROUND_Y - 120, 250, 20, "stone");
+            hut(bx, GROUND_Y, "metal", "helmet", 70);
+            beam(bx, GROUND_Y - 140, 160, 18, "stone");
+            pigAt(bx - 50, GROUND_Y - 158, "small");
+            pigAt(bx + 50, GROUND_Y - 158, "small");
+            beam(bx + 230, GROUND_Y, 44, 44, "tnt");
+          }
+        },
+        {
+          name: "Iron Citadel",
+          birds: ["black", "black", "yellow", "blue", "black", "red"],
+          build: function () {
+            var bx = 650;
+            tower(bx - 90, GROUND_Y, 2, "metal", ["small", "small"]);
+            tower(bx + 90, GROUND_Y, 3, "metal", [null, "medium", "small"]);
+            beam(bx, GROUND_Y - 204, 300, 22, "stone");
+            pigAt(bx - 50, GROUND_Y - 226, "small");
+            pigAt(bx + 50, GROUND_Y - 226, "small");
+            pigAt(bx, GROUND_Y, "big");
+            beam(bx + 260, GROUND_Y, 44, 44, "tnt");
+          }
+        }
+      ]
     },
     {
       name: "Glass Garden",
-      birds: ["blue", "blue", "yellow", "blue", "black"],
-      build: function () {
-        var bx = 640;
-        beam(bx, GROUND_Y, 18, 100, "ice");
-        beam(bx + 120, GROUND_Y, 18, 100, "ice");
-        beam(bx + 60, GROUND_Y - 100, 160, 16, "glass");
-        beam(bx + 30, GROUND_Y - 116, 16, 80, "glass");
-        beam(bx + 90, GROUND_Y - 116, 16, 80, "glass");
-        beam(bx + 60, GROUND_Y - 196, 120, 16, "ice");
-        pigAt(bx + 60, GROUND_Y, "small");
-        pigAt(bx + 60, GROUND_Y - 116, "small");
-        pigAt(bx + 30, GROUND_Y, "medium");
-        beam(bx + 180, GROUND_Y, 18, 90, "glass");
-        beam(bx + 260, GROUND_Y, 18, 90, "glass");
-        beam(bx + 220, GROUND_Y - 90, 120, 16, "glass");
-        pigAt(bx + 220, GROUND_Y, "medium");
-        pigAt(bx + 220, GROUND_Y - 106, "small");
-      }
+      icon: "\uD83D\uDC8E",
+      a: "#c7ecd9", b: "#5aa98a", desc: "Breeze through brittle glass.",
+      levels: [
+        {
+          name: "Glass Garden",
+          birds: ["blue", "blue", "yellow", "blue", "black"],
+          build: function () {
+            var bx = 640;
+            beam(bx, GROUND_Y, 18, 100, "ice");
+            beam(bx + 120, GROUND_Y, 18, 100, "ice");
+            beam(bx + 60, GROUND_Y - 100, 160, 16, "glass");
+            beam(bx + 30, GROUND_Y - 116, 16, 80, "glass");
+            beam(bx + 90, GROUND_Y - 116, 16, 80, "glass");
+            beam(bx + 60, GROUND_Y - 196, 120, 16, "ice");
+            pigAt(bx + 60, GROUND_Y, "small");
+            pigAt(bx + 60, GROUND_Y - 116, "small");
+            pigAt(bx + 30, GROUND_Y, "medium");
+            beam(bx + 180, GROUND_Y, 18, 90, "glass");
+            beam(bx + 260, GROUND_Y, 18, 90, "glass");
+            beam(bx + 220, GROUND_Y - 90, 120, 16, "glass");
+            pigAt(bx + 220, GROUND_Y, "medium");
+            pigAt(bx + 220, GROUND_Y - 106, "small");
+          }
+        },
+        {
+          name: "Glass Hut",
+          birds: ["blue", "yellow", "blue", "black"],
+          build: function () {
+            var bx = 650;
+            hut(bx - 80, GROUND_Y, "glass", "small");
+            hut(bx + 80, GROUND_Y, "glass", "small");
+            beam(bx, GROUND_Y - 88, 220, 16, "glass");
+            pigAt(bx, GROUND_Y - 104, "medium");
+          }
+        },
+        {
+          name: "Crystal Spikes",
+          birds: ["blue", "blue", "yellow", "black"],
+          build: function () {
+            var bx = 650;
+            beam(bx - 90, GROUND_Y, 16, 100, "ice");
+            beam(bx, GROUND_Y, 16, 130, "glass");
+            beam(bx + 90, GROUND_Y, 16, 100, "ice");
+            beam(bx, GROUND_Y - 130, 230, 16, "glass");
+            pigAt(bx - 90, GROUND_Y, "small");
+            pigAt(bx + 90, GROUND_Y, "small");
+            pigAt(bx, GROUND_Y - 146, "small");
+          }
+        },
+        {
+          name: "Mirror Gate",
+          birds: ["blue", "yellow", "blue", "blue", "black"],
+          build: function () {
+            var bx = 650;
+            gate(bx - 100, GROUND_Y, 140, 100, "glass");
+            gate(bx + 100, GROUND_Y, 140, 100, "glass");
+            beam(bx, GROUND_Y - 100, 340, 16, "ice");
+            pigAt(bx - 100, GROUND_Y, "small");
+            pigAt(bx + 100, GROUND_Y, "small");
+            pigAt(bx, GROUND_Y - 116, "medium");
+          }
+        },
+        {
+          name: "Prism Tower",
+          birds: ["blue", "blue", "yellow", "blue", "black"],
+          build: function () {
+            var bx = 650;
+            tower(bx, GROUND_Y, 3, "glass", ["small", "small", "medium"]);
+            pigAt(bx - 150, GROUND_Y, "small");
+            pigAt(bx + 150, GROUND_Y, "small");
+            beam(bx + 240, GROUND_Y, 44, 44, "tnt");
+          }
+        },
+        {
+          name: "Shatter Palace",
+          birds: ["blue", "blue", "yellow", "black", "blue", "black"],
+          build: function () {
+            var bx = 640;
+            beam(bx - 120, GROUND_Y, 18, 110, "ice");
+            beam(bx, GROUND_Y, 18, 110, "ice");
+            beam(bx + 120, GROUND_Y, 18, 110, "ice");
+            beam(bx, GROUND_Y - 110, 310, 18, "glass");
+            hut(bx - 70, GROUND_Y, "glass", "medium", 60);
+            hut(bx + 70, GROUND_Y, "glass", "medium", 60);
+            pigAt(bx - 40, GROUND_Y - 128, "small");
+            pigAt(bx + 40, GROUND_Y - 128, "small");
+            beam(bx + 230, GROUND_Y, 44, 44, "tnt");
+          }
+        }
+      ]
     },
     {
       name: "The Citadel",
-      birds: ["red", "yellow", "black", "blue", "black", "yellow"],
-      build: function () {
-        var bx = 660;
-        beam(bx, GROUND_Y, 24, 120, "stone");
-        beam(bx + 150, GROUND_Y, 24, 120, "stone");
-        beam(bx + 300, GROUND_Y, 24, 120, "stone");
-        beam(bx + 75, GROUND_Y - 120, 150, 20, "wood");
-        beam(bx + 225, GROUND_Y - 120, 150, 20, "wood");
-        beam(bx + 45, GROUND_Y - 140, 22, 80, "stone");
-        beam(bx + 150, GROUND_Y - 140, 22, 80, "stone");
-        beam(bx + 255, GROUND_Y - 140, 22, 80, "stone");
-        beam(bx + 150, GROUND_Y - 220, 270, 20, "stone");
-        pigAt(bx + 75, GROUND_Y, "helmet");
-        pigAt(bx + 225, GROUND_Y, "big");
-        pigAt(bx + 95, GROUND_Y - 140, "medium");
-        pigAt(bx + 205, GROUND_Y - 140, "medium");
-        pigAt(bx + 90, GROUND_Y - 240, "small");
-        pigAt(bx + 200, GROUND_Y - 240, "small");
-        beam(bx + 380, GROUND_Y, 44, 44, "tnt");
-      }
+      icon: "\uD83D\uDC51",
+      a: "#b58cff", b: "#5b3a9e", desc: "The final stronghold. Everything goes.",
+      levels: [
+        {
+          name: "The Citadel",
+          birds: ["red", "yellow", "black", "blue", "black", "yellow"],
+          build: function () {
+            var bx = 660;
+            beam(bx, GROUND_Y, 24, 120, "stone");
+            beam(bx + 150, GROUND_Y, 24, 120, "stone");
+            beam(bx + 300, GROUND_Y, 24, 120, "stone");
+            beam(bx + 75, GROUND_Y - 120, 150, 20, "wood");
+            beam(bx + 225, GROUND_Y - 120, 150, 20, "wood");
+            beam(bx + 45, GROUND_Y - 140, 22, 80, "stone");
+            beam(bx + 150, GROUND_Y - 140, 22, 80, "stone");
+            beam(bx + 255, GROUND_Y - 140, 22, 80, "stone");
+            beam(bx + 150, GROUND_Y - 220, 270, 20, "stone");
+            pigAt(bx + 75, GROUND_Y, "helmet");
+            pigAt(bx + 225, GROUND_Y, "big");
+            pigAt(bx + 95, GROUND_Y - 140, "medium");
+            pigAt(bx + 205, GROUND_Y - 140, "medium");
+            pigAt(bx + 90, GROUND_Y - 240, "small");
+            pigAt(bx + 200, GROUND_Y - 240, "small");
+            beam(bx + 380, GROUND_Y, 44, 44, "tnt");
+          }
+        },
+        {
+          name: "Outer Wall",
+          birds: ["black", "yellow", "black", "blue", "red"],
+          build: function () {
+            var bx = 650;
+            gate(bx - 110, GROUND_Y, 150, 110, "stone");
+            gate(bx + 110, GROUND_Y, 150, 110, "stone");
+            beam(bx, GROUND_Y - 110, 380, 22, "metal");
+            pigAt(bx - 110, GROUND_Y, "helmet");
+            pigAt(bx + 110, GROUND_Y, "helmet");
+            pigAt(bx, GROUND_Y - 132, "medium");
+            beam(bx - 250, GROUND_Y, 44, 44, "tnt");
+          }
+        },
+        {
+          name: "War Machine",
+          birds: ["black", "black", "yellow", "blue", "red", "black"],
+          build: function () {
+            var bx = 650;
+            beam(bx - 120, GROUND_Y, 24, 130, "metal");
+            beam(bx + 120, GROUND_Y, 24, 130, "metal");
+            beam(bx, GROUND_Y - 130, 270, 22, "stone");
+            hut(bx, GROUND_Y, "stone", "helmet", 60);
+            beam(bx, GROUND_Y - 152, 180, 18, "metal");
+            pigAt(bx - 55, GROUND_Y - 170, "small");
+            pigAt(bx + 55, GROUND_Y - 170, "small");
+            beam(bx + 240, GROUND_Y, 44, 44, "tnt");
+          }
+        },
+        {
+          name: "Death Gate",
+          birds: ["black", "yellow", "black", "blue", "black", "red"],
+          build: function () {
+            var bx = 650;
+            gate(bx - 120, GROUND_Y, 160, 120, "metal");
+            gate(bx + 120, GROUND_Y, 160, 120, "metal");
+            beam(bx, GROUND_Y - 120, 400, 22, "stone");
+            beam(bx, GROUND_Y - 142, 22, 90, "stone");
+            pigAt(bx - 120, GROUND_Y, "medium");
+            pigAt(bx + 120, GROUND_Y, "medium");
+            pigAt(bx, GROUND_Y - 232, "small");
+            beam(bx + 180, GROUND_Y, 44, 44, "tnt");
+          }
+        },
+        {
+          name: "Stronghold",
+          birds: ["black", "black", "yellow", "blue", "black", "red"],
+          build: function () {
+            var bx = 650;
+            tower(bx - 95, GROUND_Y, 3, "metal", ["medium", "small", null]);
+            tower(bx + 95, GROUND_Y, 3, "stone", [null, "medium", null]);
+            beam(bx, GROUND_Y - 204, 320, 22, "stone");
+            pigAt(bx - 50, GROUND_Y - 226, "small");
+            pigAt(bx + 50, GROUND_Y - 226, "small");
+            pigAt(bx, GROUND_Y, "big");
+            beam(bx + 270, GROUND_Y, 44, 44, "tnt");
+          }
+        },
+        {
+          name: "Final Citadel",
+          birds: ["black", "yellow", "black", "blue", "black", "yellow", "red"],
+          build: function () {
+            var bx = 650;
+            beam(bx - 150, GROUND_Y, 26, 130, "metal");
+            beam(bx - 50, GROUND_Y, 26, 130, "metal");
+            beam(bx + 50, GROUND_Y, 26, 130, "metal");
+            beam(bx + 150, GROUND_Y, 26, 130, "metal");
+            beam(bx, GROUND_Y - 130, 360, 24, "stone");
+            hut(bx - 100, GROUND_Y, "stone", "helmet", 60);
+            hut(bx + 100, GROUND_Y, "stone", "helmet", 60);
+            beam(bx, GROUND_Y - 154, 220, 20, "metal");
+            pigAt(bx - 60, GROUND_Y - 174, "medium");
+            pigAt(bx + 60, GROUND_Y - 174, "medium");
+            pigAt(bx, GROUND_Y - 174, "small");
+            beam(bx + 200, GROUND_Y, 44, 44, "tnt");
+          }
+        }
+      ]
     }
   ];
+
+  var LEVELS = [];
+  WORLDS.forEach(function (w, wi) {
+    w.levels.forEach(function (lvl, li) {
+      lvl.world = wi;
+      lvl.slot = li;
+      lvl.index = LEVELS.length;
+      LEVELS.push(lvl);
+    });
+  });
+
+  function worldIndexOf(gi) { return Math.floor(gi / LEVELS_PER_WORLD); }
+  function worldStars(wi) {
+    var s = 0;
+    for (var i = 0; i < LEVELS_PER_WORLD; i++) s += starsByLevel[wi * LEVELS_PER_WORLD + i] || 0;
+    return s;
+  }
+  function worldCleared(wi) {
+    for (var i = 0; i < LEVELS_PER_WORLD; i++) {
+      if (!(starsByLevel[wi * LEVELS_PER_WORLD + i] >= 1)) return false;
+    }
+    return true;
+  }
+  function isWorldUnlocked(wi) { return wi === 0 || worldCleared(wi - 1); }
+  function isLevelUnlocked(gi) {
+    var wi = worldIndexOf(gi), slot = gi % LEVELS_PER_WORLD;
+    if (!isWorldUnlocked(wi)) return false;
+    return slot === 0 || starsByLevel[gi - 1] >= 1;
+  }
+  function highestUnlockedInWorld(wi) {
+    var base = wi * LEVELS_PER_WORLD, best = base;
+    for (var i = 0; i < LEVELS_PER_WORLD; i++) if (isLevelUnlocked(base + i)) best = base + i;
+    return best;
+  }
 
   var overlay = document.getElementById("overlay");
   var overlayTitle = document.getElementById("overlay-title");
@@ -726,6 +1239,58 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
   var starsEl = document.getElementById("stars");
   var levelbarEl = document.getElementById("levelbar");
   var soundBtn = document.getElementById("sound");
+  var worldTitleEl = document.getElementById("world-title");
+  var worldsBtn = document.getElementById("worlds");
+  var worldMapEl = document.getElementById("worldmap");
+  var worldGridEl = document.getElementById("world-grid");
+
+  function updateWorldTitle() {
+    var w = WORLDS[currentWorld];
+    if (!w) return;
+    worldTitleEl.textContent = "World " + (currentWorld + 1) + " \u2014 " + w.name;
+  }
+
+  function goToLevel(gi) {
+    if (gi < 0 || gi >= LEVELS.length || !isLevelUnlocked(gi)) return;
+    hideOverlay();
+    currentLevel = gi;
+    currentWorld = worldIndexOf(gi);
+    resetLevel();
+  }
+
+  function enterWorld(wi) {
+    if (!isWorldUnlocked(wi)) return;
+    hideWorldMap();
+    goToLevel(highestUnlockedInWorld(wi));
+  }
+
+  function showWorldMap() {
+    hideOverlay();
+    buildWorldMap();
+    worldMapEl.classList.add("show");
+  }
+  function hideWorldMap() { worldMapEl.classList.remove("show"); }
+
+  function buildWorldMap() {
+    worldGridEl.innerHTML = "";
+    WORLDS.forEach(function (w, wi) {
+      var open = isWorldUnlocked(wi);
+      var card = document.createElement("button");
+      card.className = "world-card" + (open ? "" : " locked") + (wi === currentWorld ? " current" : "");
+      card.style.setProperty("--wa", w.a);
+      card.style.setProperty("--wb", w.b);
+      var got = worldStars(wi), max = LEVELS_PER_WORLD * 3;
+      card.innerHTML =
+        '<div class="world-icon">' + (open ? w.icon : "\uD83D\uDD12") + "</div>" +
+        '<div class="world-meta">' +
+          '<div class="world-name">' + w.name + "</div>" +
+          '<div class="world-desc">' + (open ? w.desc : "Clear the previous world to unlock") + "</div>" +
+          '<div class="world-stars">\u2605 ' + got + " / " + max + "</div>" +
+        "</div>";
+      card.addEventListener("click", function () { if (open) enterWorld(wi); });
+      worldGridEl.appendChild(card);
+    });
+  }
 
   function updateHud() {
     scoreEl.textContent = "Score " + score;
@@ -738,32 +1303,32 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
 
   function updateLevelBar() {
     levelbarEl.innerHTML = "";
-    LEVELS.forEach(function (lvl, i) {
+    var base = currentWorld * LEVELS_PER_WORLD;
+    for (var slot = 0; slot < LEVELS_PER_WORLD; slot++) {
+      var gi = base + slot;
+      var locked = !isLevelUnlocked(gi);
       var btn = document.createElement("button");
-      btn.className = "level-btn" + (i === currentLevel ? " active" : "") + (i >= unlocked ? " locked" : "");
-      var s = starsByLevel[i] || 0;
+      btn.className = "level-btn" + (gi === currentLevel ? " active" : "") + (locked ? " locked" : "");
+      var s = starsByLevel[gi] || 0;
       var starTxt = s ? "\u2605".repeat(s) : "\u2606\u2606\u2606";
-      btn.innerHTML = (i >= unlocked ? '<span class="lk">\uD83D\uDD12 </span>' : "") + "Level " + (i + 1) + " <span class='lk'>" + starTxt + "</span>";
-      btn.addEventListener("click", function () {
-        if (i >= unlocked) return;
-        hideOverlay();
-        currentLevel = i;
-        resetLevel();
-      });
+      btn.innerHTML = (locked ? '<span class="lk">\uD83D\uDD12 </span>' : "") + "Level " + (slot + 1) + " <span class='lk'>" + starTxt + "</span>";
+      (function (target) {
+        btn.addEventListener("click", function () { goToLevel(target); });
+      })(gi);
       levelbarEl.appendChild(btn);
-    });
+    }
   }
 
   overlayBtn.addEventListener("click", function () {
     hideOverlay();
-    if (overlayBtn.dataset.win === "1" && currentLevel + 1 < LEVELS.length) {
-      currentLevel++;
-      resetLevel();
+    if (overlayBtn.dataset.win === "1" && currentLevel + 1 < LEVELS.length && isLevelUnlocked(currentLevel + 1)) {
+      goToLevel(currentLevel + 1);
     } else {
       resetLevel();
     }
   });
   overlayRetry.addEventListener("click", function () { hideOverlay(); resetLevel(); });
+  worldsBtn.addEventListener("click", function () { showWorldMap(); });
   document.getElementById("reset").addEventListener("click", function () { hideOverlay(); resetLevel(); });
   soundBtn.addEventListener("click", function () {
     muted = !muted;
@@ -925,6 +1490,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
 
   loadProgress();
   buildLevel(currentLevel);
+  showWorldMap();
   requestAnimationFrame(loop);
 
   window.__AB = {
@@ -939,7 +1505,8 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
         pigPositions: pigs.map(function (p) { return { x: Math.round(p.position.x), y: Math.round(p.position.y), hp: Math.round(p.plugin.hp), type: p.plugin.type }; })
       };
     },
-    level: function (i) { hideOverlay(); currentLevel = i; resetLevel(); },
+    level: function (i) { hideOverlay(); hideWorldMap(); currentLevel = clamp(i, 0, LEVELS.length - 1); currentWorld = worldIndexOf(currentLevel); resetLevel(); },
+    worlds: function () { return WORLDS.map(function (w, wi) { return { name: w.name, unlocked: isWorldUnlocked(wi), stars: worldStars(wi), levels: w.levels.length }; }); },
     launch: function (angleDeg, pull, abilityDelayMs) {
       if (!bird || activeFlight) return false;
       var dx = -Math.cos(angleDeg * Math.PI / 180) * pull;

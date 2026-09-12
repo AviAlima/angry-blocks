@@ -18,11 +18,15 @@
         <span class="bird-dot" aria-hidden="true"></span>
       </div>
       <button id="sound" class="icon-btn" title="Sound" aria-label="Toggle sound">♪</button>
+      <button id="worlds">Worlds</button>
       <button id="reset">Restart</button>
     </div>
   </header>
 
-  <div class="levelbar" id="levelbar" role="tablist" aria-label="Levels"></div>
+  <div class="levelbar-wrap">
+    <div class="world-title" id="world-title">World 1 — Timber Yard</div>
+    <div class="levelbar" id="levelbar" role="tablist" aria-label="Levels"></div>
+  </div>
 
   <div class="stage" id="stage">
     <canvas id="game" width="1000" height="600"></canvas>
@@ -35,6 +39,14 @@
         <button id="overlay-btn">Next Level</button>
         <button id="overlay-retry" class="ghost">Retry</button>
       </div>
+    </div>
+
+    <div class="worldmap" id="worldmap">
+      <div class="worldmap-head">
+        <h2>Choose a World</h2>
+        <p>Clear all 6 levels of a world to unlock the next.</p>
+      </div>
+      <div class="world-grid" id="world-grid"></div>
     </div>
   </div>
 
