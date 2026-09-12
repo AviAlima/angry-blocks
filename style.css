@@ -147,8 +147,8 @@ button.ghost {
 body.immersive { background: #000; padding: 0; gap: 0; }
 body.immersive header {
   position: fixed;
-  top: 10px;
-  right: 10px;
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  right: calc(10px + env(safe-area-inset-right, 0px));
   width: auto;
   justify-content: flex-end;
   z-index: 30;
@@ -165,15 +165,38 @@ body.immersive .stage {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: min(100vw, calc(100vh * 5 / 3));
-  width: min(100vw, calc(100dvh * 5 / 3));
-  height: min(100vh, calc(100vw * 3 / 5));
-  height: min(100dvh, calc(100vw * 3 / 5));
+  width: min(calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)), calc(100vh * 5 / 3));
+  width: min(calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)), calc(100dvh * 5 / 3));
+  height: min(calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)), calc(100vw * 3 / 5));
+  height: min(calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)), calc(100vw * 3 / 5));
   border-radius: 0;
   box-shadow: none;
   background: #000;
   z-index: 10;
 }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  max-width: min(560px, 90vw);
+  padding: 12px 18px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.88);
+  border: 1px solid var(--panel-border);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  z-index: 60;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+  backdrop-filter: blur(6px);
+}
+.toast.show { opacity: 1; }
 
 .levelbar {
   width: 100%;

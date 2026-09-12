@@ -1369,11 +1369,39 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     fullscreenBtn.title = on ? "Exit fullscreen" : "Fullscreen";
   }
 
+  function isStandalone() {
+    if (/** @type {any} */ (window.navigator).standalone === true) return true;
+    return !!(window.matchMedia && window.matchMedia("(display-mode: fullscreen), (display-mode: standalone)").matches);
+  }
+  function isIOS() {
+    var ua = navigator.userAgent || "";
+    return /iPad|iPhone|iPod/.test(ua) || (ua.indexOf("Macintosh") !== -1 && "ontouchend" in document);
+  }
+
+  var toastEl = null, toastTimer = 0;
+  function showToast(msg, ms) {
+    if (!toastEl) {
+      toastEl = document.createElement("div");
+      toastEl.className = "toast";
+      document.body.appendChild(toastEl);
+    }
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove("show"); }, ms || 6000);
+  }
+
   fullscreenBtn.addEventListener("click", function () {
     var on = !document.body.classList.contains("immersive");
     setImmersive(on);
     if (on) {
-      requestNativeFullscreen().then(lockLandscape).catch(function () {});
+      requestNativeFullscreen()
+        .then(lockLandscape)
+        .catch(function () {
+          if (isIOS() && !isStandalone()) {
+            showToast("For a true full screen: tap Share \u25B8 Add to Home Screen, then open Angry Blocks from your home screen.");
+          }
+        });
     } else {
       exitNativeFullscreen().catch(function () {});
     }
