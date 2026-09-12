@@ -3,32 +3,45 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Angry Blocks</title>
-  <meta name="description" content="A physics slingshot game — fling birds, topple towers, pop pigs." />
+  <title>Angry Blocks — Physics Slingshot</title>
+  <meta name="description" content="A hand-drawn physics slingshot game — fling birds, shatter towers, pop pigs." />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header>
     <h1>Angry <span class="bird">Blocks</span></h1>
     <div class="hud">
-      <div class="pill" id="score">Score: 0</div>
-      <div class="pill" id="birds">Birds: 3</div>
+      <div class="pill" id="score">Score 0</div>
+      <div class="stars" id="stars" aria-label="stars"></div>
+      <div class="pill birds-pill">
+        <span id="birds-count">3</span>
+        <span class="bird-dot" aria-hidden="true"></span>
+      </div>
+      <button id="sound" class="icon-btn" title="Sound" aria-label="Toggle sound">♪</button>
       <button id="reset">Restart</button>
     </div>
   </header>
 
-  <div class="stage">
+  <div class="levelbar" id="levelbar" role="tablist" aria-label="Levels"></div>
+
+  <div class="stage" id="stage">
     <canvas id="game" width="1000" height="600"></canvas>
+
     <div class="overlay" id="overlay">
       <h2 id="overlay-title">Level Clear!</h2>
-      <p id="overlay-text">Score: 0</p>
-      <button id="overlay-btn">Play Again</button>
+      <div class="overlay-stars" id="overlay-stars"></div>
+      <p id="overlay-text">Score 0</p>
+      <div class="overlay-actions">
+        <button id="overlay-btn">Next Level</button>
+        <button id="overlay-retry" class="ghost">Retry</button>
+      </div>
     </div>
   </div>
 
-  <p class="hint">Drag the bird back from the slingshot and release to launch. Squash all the pigs to win.</p>
+  <p class="hint">Drag the bird from the slingshot and release. Tap in flight for special powers. Pop every pig to win.</p>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+  <script src="matter.min.js"></script>
+  <script>window.Matter || document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"><\/script>');</script>
   <script src="game.js"></script>
 </body>
 </html>
