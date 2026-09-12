@@ -1224,12 +1224,8 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     }
     return true;
   }
-  function isWorldUnlocked(wi) { return wi === 0 || worldCleared(wi - 1); }
-  function isLevelUnlocked(gi) {
-    var wi = worldIndexOf(gi), slot = gi % LEVELS_PER_WORLD;
-    if (!isWorldUnlocked(wi)) return false;
-    return slot === 0 || starsByLevel[gi - 1] >= 1;
-  }
+  function isWorldUnlocked(wi) { return true; }
+  function isLevelUnlocked(gi) { return true; }
   function highestUnlockedInWorld(wi) {
     var base = wi * LEVELS_PER_WORLD, best = base;
     for (var i = 0; i < LEVELS_PER_WORLD; i++) if (isLevelUnlocked(base + i)) best = base + i;
