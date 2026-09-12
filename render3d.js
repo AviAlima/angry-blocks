@@ -37,12 +37,284 @@ const FxShader = {
   ].join("\n")
 };
 
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const IS_MOBILE = IS_IOS || /Android/i.test(navigator.userAgent);
+const LOW_POWER = IS_MOBILE || (navigator.hardwareConcurrency || 8) <= 4;
+
+const WORLD_STYLES = {
+  timber: {
+    sky: ["#2f7fd0", "#8fd0f0", "#eaf6dc"],
+    sun: { color: "#fff2c0", glow: "#ffe08a", x: 0.74, y: 0.22, intensity: 1.0 },
+    fog: { color: "#cfe3d0", near: 1500, far: 4600 },
+    hemi: ["#bfe4ff", "#6b4c2a", 0.42],
+    key: { color: "#fff0cc", intensity: 2.3 },
+    cloud: "#ffffff",
+    groundTop: { base: "#63b83c", style: "grass" },
+    groundSide: { base: "#6b4c2a", style: "dirt" },
+    backdrop: "forest", backdropColors: ["#c3ddb0", "#93c07a", "#6ea45f"],
+    env: 0.5, props: "forest", weather: "leaves"
+  },
+  ice: {
+    sky: ["#4f7fb0", "#a8cbe6", "#eef7ff"],
+    sun: { color: "#f2f8ff", glow: "#d8ecff", x: 0.7, y: 0.24, intensity: 0.8 },
+    fog: { color: "#dceaf5", near: 1000, far: 3800 },
+    hemi: ["#dff0ff", "#7f9fb5", 0.58],
+    key: { color: "#dcefff", intensity: 2.0 },
+    cloud: "#eef6ff",
+    groundTop: { base: "#dbe9f4", style: "snow" },
+    groundSide: { base: "#a8c8dd", style: "ice" },
+    backdrop: "peaks", backdropColors: ["#cfe2f0", "#a9c6dc", "#7fa2c2"],
+    env: 0.72, props: "snow", weather: "snow"
+  },
+  stone: {
+    sky: ["#7b8b98", "#b3bfc8", "#e4e6e7"],
+    sun: { color: "#fdf4d6", glow: "#e8dcc0", x: 0.68, y: 0.2, intensity: 0.6 },
+    fog: { color: "#c7cdd2", near: 1200, far: 4200 },
+    hemi: ["#d0d8e0", "#5a636e", 0.5],
+    key: { color: "#f0f2f5", intensity: 2.0 },
+    cloud: "#dfe4e8",
+    groundTop: { base: "#8d949c", style: "concrete" },
+    groundSide: { base: "#5a636e", style: "concrete" },
+    backdrop: "city", backdropColors: ["#8d99a5", "#6b7784", "#4d5661"],
+    env: 0.45, props: "city", weather: "dust"
+  },
+  bunker: {
+    sky: ["#3b3f44", "#6b5f57", "#a8836a"],
+    sun: { color: "#ffb87a", glow: "#ff8f4a", x: 0.72, y: 0.28, intensity: 0.7 },
+    fog: { color: "#6d625a", near: 800, far: 3400 },
+    hemi: ["#8a7f74", "#3c434d", 0.4],
+    key: { color: "#ffb37a", intensity: 1.8 },
+    cloud: "#8a8078",
+    groundTop: { base: "#6a5436", style: "dirt" },
+    groundSide: { base: "#463829", style: "dirt" },
+    backdrop: "ruins", backdropColors: ["#5a5f64", "#41464b", "#2b2f33"],
+    env: 0.35, props: "war", weather: "embers"
+  },
+  glass: {
+    sky: ["#b48fe0", "#e2c9f2", "#fbe9f5"],
+    sun: { color: "#ffe0f4", glow: "#ffbdec", x: 0.7, y: 0.22, intensity: 0.85 },
+    fog: { color: "#eadcf5", near: 1300, far: 4400 },
+    hemi: ["#f0dcff", "#6aa98a", 0.55],
+    key: { color: "#ffe6f7", intensity: 2.1 },
+    cloud: "#f6e9ff",
+    groundTop: { base: "#8fcf9a", style: "meadow" },
+    groundSide: { base: "#5aa98a", style: "dirt" },
+    backdrop: "crystal", backdropColors: ["#e2d2f6", "#bda0e6", "#9678c8"],
+    env: 0.68, props: "crystal", weather: "sparkles"
+  },
+  citadel: {
+    sky: ["#1b1533", "#3a2b63", "#6b3f7a"],
+    sun: { color: "#e0ccff", glow: "#a67dff", x: 0.7, y: 0.24, intensity: 0.6 },
+    fog: { color: "#2a2145", near: 700, far: 3200 },
+    hemi: ["#6a5a9a", "#241c3a", 0.45],
+    key: { color: "#c9a9ff", intensity: 1.7 },
+    cloud: "#4a3f66",
+    groundTop: { base: "#2c2640", style: "obsidian" },
+    groundSide: { base: "#1a1630", style: "obsidian" },
+    backdrop: "citadel", backdropColors: ["#3a2b63", "#251b41", "#120d22"],
+    env: 0.5, props: "dark", weather: "ash"
+  }
+};
+
+const themeAssetsCache = {};
+
+function hexA(hex, a) {
+  const c = new THREE.Color().setStyle(hex);
+  return "rgba(" + Math.round(c.r * 255) + "," + Math.round(c.g * 255) + "," + Math.round(c.b * 255) + "," + a + ")";
+}
+
+function drawGround(g, s, style, base) {
+  g.fillStyle = base; g.fillRect(0, 0, s, s);
+  if (style === "grass") {
+    for (let i = 0; i < 1800; i++) {
+      const x = Math.random() * s, y = Math.random() * s, k = Math.random();
+      g.fillStyle = k < 0.34 ? "rgba(70,150,40,0.5)" : k < 0.68 ? "rgba(120,200,80,0.5)" : "rgba(175,230,120,0.45)";
+      g.fillRect(x, y, 1.4, 3 + Math.random() * 4);
+    }
+  } else if (style === "snow") {
+    for (let i = 0; i < 900; i++) {
+      const x = Math.random() * s, y = Math.random() * s;
+      g.fillStyle = Math.random() < 0.5 ? "rgba(200,225,245,0.35)" : "rgba(255,255,255,0.6)";
+      g.beginPath(); g.arc(x, y, 1 + Math.random() * 2.4, 0, 6.3); g.fill();
+    }
+  } else if (style === "ice") {
+    for (let i = 0; i < 260; i++) {
+      const x = Math.random() * s, y = Math.random() * s;
+      g.strokeStyle = "rgba(255,255,255,0.35)"; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x + 10 + Math.random() * 30, y + (Math.random() - 0.5) * 16); g.stroke();
+    }
+  } else if (style === "concrete") {
+    noiseOn(g, s, 900, "rgba(40,44,48,0.22)", "rgba(220,225,230,0.18)");
+    g.strokeStyle = "rgba(30,34,38,0.35)"; g.lineWidth = 2;
+    for (let i = 0; i < 7; i++) {
+      g.beginPath(); const x = Math.random() * s, y = Math.random() * s;
+      g.moveTo(x, y); g.lineTo(x + (Math.random() - 0.5) * 70, y + (Math.random() - 0.5) * 70); g.stroke();
+    }
+  } else if (style === "dirt") {
+    noiseOn(g, s, 1100, "rgba(30,20,10,0.3)", "rgba(160,130,90,0.22)");
+    for (let i = 0; i < 40; i++) { g.beginPath(); g.arc(Math.random() * s, Math.random() * s, 1 + Math.random() * 2.5, 0, 6.3); g.fillStyle = "rgba(30,20,10,0.3)"; g.fill(); }
+  } else if (style === "meadow") {
+    for (let i = 0; i < 1400; i++) {
+      const x = Math.random() * s, y = Math.random() * s, k = Math.random();
+      g.fillStyle = k < 0.3 ? "rgba(120,205,140,0.5)" : k < 0.6 ? "rgba(180,235,190,0.45)" : "rgba(240,170,220,0.5)";
+      g.beginPath(); g.arc(x, y, 1 + Math.random() * 2.2, 0, 6.3); g.fill();
+    }
+  } else if (style === "obsidian") {
+    noiseOn(g, s, 700, "rgba(0,0,0,0.5)", "rgba(150,120,220,0.18)");
+    g.strokeStyle = "rgba(150,110,240,0.35)"; g.lineWidth = 1.5;
+    for (let i = 0; i < 9; i++) {
+      g.beginPath(); const x = Math.random() * s, y = Math.random() * s;
+      g.moveTo(x, y); g.lineTo(x + (Math.random() - 0.5) * 90, y + (Math.random() - 0.5) * 90); g.stroke();
+    }
+  }
+}
+
+function groundTex(style, base, repeat) {
+  const t = canvasTex(256, 256, (g, s) => drawGround(g, s, style, base), repeat);
+  t.anisotropy = LOW_POWER ? 1 : 4;
+  return t;
+}
+
+function buildSkyTexture(spec) {
+  return canvasTex(512, 256, (g) => {
+    const grd = g.createLinearGradient(0, 0, 0, 256);
+    grd.addColorStop(0, spec.sky[0]);
+    grd.addColorStop(0.46, spec.sky[1]);
+    grd.addColorStop(1, spec.sky[2]);
+    g.fillStyle = grd; g.fillRect(0, 0, 512, 256);
+    const sx = 512 * spec.sun.x, sy = 256 * spec.sun.y;
+    const sun = g.createRadialGradient(sx, sy, 4, sx, sy, 150);
+    sun.addColorStop(0, "rgba(255,255,255,1)");
+    sun.addColorStop(0.22, hexA(spec.sun.glow, 0.75));
+    sun.addColorStop(1, hexA(spec.sun.glow, 0));
+    g.fillStyle = sun; g.fillRect(sx - 160, sy - 160, 320, 320);
+    if (spec.weather === "snow" || spec.weather === "ash") {
+      for (let i = 0; i < 60; i++) {
+        const x = Math.random() * 512, y = Math.random() * 256;
+        g.fillStyle = "rgba(255,255,255,0.16)";
+        g.beginPath(); g.arc(x, y, 1 + Math.random() * 2, 0, 6.3); g.fill();
+      }
+    }
+  });
+}
+
+function buildBackdropTexture(spec) {
+  return canvasTex(1024, 320, (g, w, h) => {
+    g.clearRect(0, 0, w, h);
+    const c = spec.backdropColors;
+    if (spec.backdrop === "forest") {
+      layerHills(g, w, h, 0.72, 34, c[0]);
+      layerHills(g, w, h, 0.84, 46, c[1]);
+      layerHills(g, w, h, 1.0, 58, c[2]);
+      for (let x = 4; x < w; x += 20) {
+        const y = h * 0.72 - 22 * (0.5 + 0.5 * Math.sin(x * 0.006)) - 8;
+        const th = 14 + (x % 5) * 4;
+        g.fillStyle = c[1];
+        g.beginPath(); g.moveTo(x, y - th); g.lineTo(x - 6, y + 3); g.lineTo(x + 6, y + 3); g.closePath(); g.fill();
+        g.fillStyle = "rgba(60,44,26,0.55)";
+        g.fillRect(x - 1.5, y + 1, 3, 7);
+      }
+    } else if (spec.backdrop === "peaks") {
+      for (let i = 0; i < 26; i++) {
+        const x = i * 42 - 10, peak = 60 + ((i * 37) % 11) * 9;
+        g.fillStyle = i % 2 ? c[2] : c[1];
+        g.beginPath(); g.moveTo(x, h); g.lineTo(x + 22, h - peak); g.lineTo(x + 44, h); g.closePath(); g.fill();
+        g.fillStyle = c[0];
+        g.beginPath(); g.moveTo(x + 22, h - peak); g.lineTo(x + 10, h - peak * 0.62); g.lineTo(x + 34, h - peak * 0.62); g.closePath(); g.fill();
+      }
+    } else if (spec.backdrop === "city") {
+      for (let row = 0; row < 3; row++) {
+        const shade = c[row];
+        for (let x = -20; x < w; x += 46 + ((x * 7) % 3) * 10) {
+          const bw = 34 + ((x * 13) % 4) * 12;
+          const bh = 70 + ((x * 17) % 5) * (46 - row * 8);
+          g.fillStyle = shade;
+          g.fillRect(x, h - bh, bw, bh);
+          for (let wx = x + 6; wx < x + bw - 6; wx += 11) {
+            for (let wy = h - bh + 8; wy < h - 10; wy += 15) {
+              if ((wx + wy) % 3 === 0) { g.fillStyle = "rgba(255,236,170,0.5)"; g.fillRect(wx, wy, 4, 6); g.fillStyle = shade; }
+            }
+          }
+        }
+      }
+    } else if (spec.backdrop === "ruins") {
+      g.fillStyle = c[1];
+      for (let i = 0; i < 30; i++) {
+        const x = i * 34, bh = 40 + ((i * 29) % 7) * 14;
+        g.fillRect(x, h - bh, 20 + ((i * 11) % 3) * 8, bh);
+      }
+      g.fillStyle = c[0];
+      g.fillRect(180, h - 150, 60, 150);
+      g.fillRect(700, h - 180, 70, 180);
+      g.fillStyle = c[2];
+      g.fillRect(180, h - 158, 60, 12);
+      g.fillRect(700, h - 190, 70, 14);
+      for (let i = 0; i < 5; i++) {
+        g.fillStyle = "rgba(40,40,44,0.5)";
+        const sx = 120 + i * 190;
+        g.beginPath(); g.moveTo(sx, h); g.quadraticCurveTo(sx + 20, h - 120, sx + 44, h - 190); g.lineTo(sx + 60, h); g.closePath(); g.fill();
+      }
+    } else if (spec.backdrop === "crystal") {
+      for (let i = 0; i < 22; i++) {
+        const x = i * 48 - 10;
+        const ph = 90 + ((i * 41) % 8) * 18;
+        g.fillStyle = i % 3 === 0 ? c[0] : i % 3 === 1 ? c[1] : c[2];
+        g.beginPath();
+        g.moveTo(x, h); g.lineTo(x + 18, h - ph); g.lineTo(x + 40, h);
+        g.closePath(); g.fill();
+        g.fillStyle = "rgba(255,255,255,0.35)";
+        g.beginPath(); g.moveTo(x + 18, h - ph); g.lineTo(x + 6, h - ph * 0.5); g.lineTo(x + 18, h); g.closePath(); g.fill();
+      }
+    } else if (spec.backdrop === "citadel") {
+      for (let i = 0; i < 16; i++) {
+        const x = i * 66 - 20, th = 120 + ((i * 29) % 6) * 30;
+        g.fillStyle = i % 2 ? c[1] : c[0];
+        g.fillRect(x, h - th, 40, th);
+        g.fillStyle = c[2];
+        g.beginPath(); g.moveTo(x - 6, h - th); g.lineTo(x + 20, h - th - 46); g.lineTo(x + 46, h - th); g.closePath(); g.fill();
+        for (let b = 0; b < 3; b++) g.fillRect(x + 4 + b * 13, h - th - 12, 9, 12);
+      }
+    }
+  });
+}
+
+function layerHills(g, w, h, base, amp, color) {
+  g.beginPath(); g.moveTo(0, h);
+  for (let x = 0; x <= w; x += 16) {
+    const y = h * base - amp * (0.5 + 0.5 * Math.sin(x * 0.006)) - amp * 0.35 * Math.sin(x * 0.014);
+    g.lineTo(x, y);
+  }
+  g.lineTo(w, h); g.closePath();
+  g.fillStyle = color; g.fill();
+}
+
+function getThemeAssets(style) {
+  if (themeAssetsCache[style]) return themeAssetsCache[style];
+  const spec = WORLD_STYLES[style] || WORLD_STYLES.timber;
+  const assets = {
+    sky: buildSkyTexture(spec),
+    backdrop: buildBackdropTexture(spec),
+    top: groundTex(spec.groundTop.style, spec.groundTop.base, [30, 14]),
+    side: groundTex(spec.groundSide.style, spec.groundSide.base, [40, 6])
+  };
+  themeAssetsCache[style] = assets;
+  return assets;
+}
+
 let renderer, scene, camera, state = null;
 let root, flashQuad;
 let composer, bloomPass, gtaoPass, fxPass;
 let frameStamp = 1;
 const camSmooth = { x: 0, y: 0, fov: 0 };
 let prevLaunched = false;
+let hemiLight, keyLight, fillLight, rimLight, glowSprite, sunBall, groundMesh, backdropMesh, cloudMat;
+let currentStyle = null;
+let propGroup = null;
+let weather = null;
+let lastWeatherTime = 0;
+const quality = { pixelRatio: Math.min(window.devicePixelRatio || 1, LOW_POWER ? 1.5 : 2), gtao: !LOW_POWER, shadow: LOW_POWER ? 1024 : 2048 };
+let perfSlow = 0, qualityStep = 0, monitorLast = 0;
+let themeEnv = 0.55;
 
 const blockMeshes = new Map();
 const pigMeshes = new Map();
@@ -301,14 +573,15 @@ const outMetal = new THREE.LineBasicMaterial({ color: 0x333a44, transparent: tru
 
 function blockMaterial(kind) {
   const nscale = new THREE.Vector2(0.45, 0.45);
+  const e = themeEnv;
   switch (kind) {
-    case "stone": return new THREE.MeshStandardMaterial({ map: tex.stone, normalMap: tex.stoneNorm, normalScale: nscale, roughness: 0.92, metalness: 0.04, envMapIntensity: 0.55 });
-    case "ice": return new THREE.MeshStandardMaterial({ map: tex.ice, normalMap: tex.iceNorm, normalScale: nscale, roughness: 0.08, metalness: 0.10, transparent: true, opacity: 0.66, emissive: 0x2a6b90, emissiveIntensity: 0.18, envMapIntensity: 1.35 });
-    case "glass": return new THREE.MeshStandardMaterial({ map: tex.glass, normalMap: tex.glassNorm, normalScale: nscale, roughness: 0.05, metalness: 0.10, transparent: true, opacity: 0.55, emissive: 0x1f7a55, emissiveIntensity: 0.14, envMapIntensity: 1.35 });
-    case "metal": return new THREE.MeshStandardMaterial({ map: tex.metal, normalMap: tex.metalNorm, normalScale: nscale, roughness: 0.34, metalness: 0.78, envMapIntensity: 1.5 });
-    case "sand": return new THREE.MeshStandardMaterial({ map: tex.sand, normalMap: tex.sandNorm, normalScale: nscale, roughness: 1.0, metalness: 0.0, envMapIntensity: 0.5 });
-    case "tnt": return new THREE.MeshStandardMaterial({ map: tex.tnt, normalMap: tex.tntNorm, normalScale: nscale, roughness: 0.7, metalness: 0.05, envMapIntensity: 0.5, emissive: 0x3a0a08, emissiveIntensity: 0.25 });
-    default: return new THREE.MeshStandardMaterial({ map: tex.wood, normalMap: tex.woodNorm, normalScale: nscale, roughness: 0.86, metalness: 0.03, envMapIntensity: 0.5 });
+    case "stone": return new THREE.MeshStandardMaterial({ map: tex.stone, normalMap: tex.stoneNorm, normalScale: nscale, roughness: 0.92, metalness: 0.04, envMapIntensity: e });
+    case "ice": return new THREE.MeshStandardMaterial({ map: tex.ice, normalMap: tex.iceNorm, normalScale: nscale, roughness: 0.08, metalness: 0.10, transparent: true, opacity: 0.66, emissive: 0x2a6b90, emissiveIntensity: 0.18, envMapIntensity: e * 2.4 });
+    case "glass": return new THREE.MeshStandardMaterial({ map: tex.glass, normalMap: tex.glassNorm, normalScale: nscale, roughness: 0.05, metalness: 0.10, transparent: true, opacity: 0.55, emissive: 0x1f7a55, emissiveIntensity: 0.14, envMapIntensity: e * 2.4 });
+    case "metal": return new THREE.MeshStandardMaterial({ map: tex.metal, normalMap: tex.metalNorm, normalScale: nscale, roughness: 0.34, metalness: 0.78, envMapIntensity: e * 2.8 });
+    case "sand": return new THREE.MeshStandardMaterial({ map: tex.sand, normalMap: tex.sandNorm, normalScale: nscale, roughness: 1.0, metalness: 0.0, envMapIntensity: e });
+    case "tnt": return new THREE.MeshStandardMaterial({ map: tex.tnt, normalMap: tex.tntNorm, normalScale: nscale, roughness: 0.7, metalness: 0.05, envMapIntensity: e, emissive: 0x3a0a08, emissiveIntensity: 0.25 });
+    default: return new THREE.MeshStandardMaterial({ map: tex.wood, normalMap: tex.woodNorm, normalScale: nscale, roughness: 0.86, metalness: 0.03, envMapIntensity: e });
   }
 }
 function outlineFor(kind) {
@@ -329,7 +602,9 @@ function createBlock(body) {
   const mesh = new THREE.Mesh(geo, mat);
   mesh.castShadow = true; mesh.receiveShadow = true;
   mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), outlineFor(p.kind)));
-  mesh.userData = { kind: p.kind, baseEmissive: mat.emissive.clone(), emissiveIntensity: mat.emissiveIntensity || 0 };
+  mesh.userData = { kind: p.kind, baseEmissive: mat.emissive.clone(), emissiveIntensity: mat.emissiveIntensity || 0, w: p.w, h: p.h, depth: depth, pluginDecor: p.decor };
+  const decor = buildDecor(mesh.userData);
+  if (decor) { decor.name = "decor"; mesh.add(decor); }
   return mesh;
 }
 
@@ -482,7 +757,7 @@ function clearMap(map) {
 
 export function init(canvas) {
   renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(quality.pixelRatio);
   renderer.setSize(W, H, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -503,25 +778,26 @@ export function init(canvas) {
   camera.position.set(CAM_POS.x, CAM_POS.y, CAM_POS.z);
   camera.lookAt(CAM_LOOK.x, CAM_LOOK.y, CAM_LOOK.z);
 
-  scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x6b4c2a, 0.38));
-  const key = new THREE.DirectionalLight(0xfff2d0, 2.2);
-  key.position.set(520, 900, 760);
-  key.target.position.set(0, -120, 0);
-  key.castShadow = true;
-  key.shadow.mapSize.set(2048, 2048);
-  key.shadow.camera.left = -720; key.shadow.camera.right = 720;
-  key.shadow.camera.top = 620; key.shadow.camera.bottom = -560;
-  key.shadow.camera.near = 1; key.shadow.camera.far = 3200;
-  key.shadow.bias = -0.0006;
-  key.shadow.normalBias = 0.02;
-  key.shadow.radius = 3;
-  scene.add(key); scene.add(key.target);
-  const fill = new THREE.DirectionalLight(0x9fc4ff, 0.3);
-  fill.position.set(-600, 300, 400);
-  scene.add(fill);
-  const rim = new THREE.DirectionalLight(0xffd9a0, 0.2);
-  rim.position.set(0, 200, -800);
-  scene.add(rim);
+  hemiLight = new THREE.HemisphereLight(0xcfe8ff, 0x6b4c2a, 0.38);
+  scene.add(hemiLight);
+  keyLight = new THREE.DirectionalLight(0xfff2d0, 2.2);
+  keyLight.position.set(520, 900, 760);
+  keyLight.target.position.set(0, -120, 0);
+  keyLight.castShadow = true;
+  keyLight.shadow.mapSize.set(quality.shadow, quality.shadow);
+  keyLight.shadow.camera.left = -720; keyLight.shadow.camera.right = 720;
+  keyLight.shadow.camera.top = 620; keyLight.shadow.camera.bottom = -560;
+  keyLight.shadow.camera.near = 1; keyLight.shadow.camera.far = 3200;
+  keyLight.shadow.bias = -0.0006;
+  keyLight.shadow.normalBias = 0.02;
+  keyLight.shadow.radius = 3;
+  scene.add(keyLight); scene.add(keyLight.target);
+  fillLight = new THREE.DirectionalLight(0x9fc4ff, 0.3);
+  fillLight.position.set(-600, 300, 400);
+  scene.add(fillLight);
+  rimLight = new THREE.DirectionalLight(0xffd9a0, 0.2);
+  rimLight.position.set(0, 200, -800);
+  scene.add(rimLight);
 
   root = new THREE.Group();
   scene.add(root);
@@ -529,33 +805,34 @@ export function init(canvas) {
   const groundGeo = new THREE.BoxGeometry(4200, 600, 2000);
   const topMat = new THREE.MeshStandardMaterial({ map: tex.grass, roughness: 1, metalness: 0, envMapIntensity: 0.45 });
   const sideMat = new THREE.MeshStandardMaterial({ map: tex.dirt, roughness: 1, metalness: 0, envMapIntensity: 0.35 });
-  const ground = new THREE.Mesh(groundGeo, [sideMat, sideMat, topMat, sideMat, sideMat, sideMat]);
-  ground.position.set(0, GROUND_TOP - 300, 0);
-  ground.receiveShadow = true;
-  root.add(ground);
+  groundMesh = new THREE.Mesh(groundGeo, [sideMat, sideMat, topMat, sideMat, sideMat, sideMat]);
+  groundMesh.position.set(0, GROUND_TOP - 300, 0);
+  groundMesh.receiveShadow = true;
+  root.add(groundMesh);
 
   const backGeo = new THREE.PlaneGeometry(2800, 900);
   const backMat = new THREE.MeshBasicMaterial({ map: tex.hills, transparent: true, depthWrite: false });
-  backdrop = new THREE.Mesh(backGeo, backMat);
-  backdrop.position.set(0, 220, -540);
-  scene.add(backdrop);
+  backdropMesh = new THREE.Mesh(backGeo, backMat);
+  backdropMesh.position.set(0, 220, -540);
+  scene.add(backdropMesh);
 
-  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex.glow, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false }));
-  glow.position.set(430, 300, -700);
-  glow.scale.set(300, 300, 1);
-  scene.add(glow);
-  const sunBall = new THREE.Mesh(new THREE.SphereGeometry(38, 24, 18), new THREE.MeshBasicMaterial({ color: 0xfff3c4 }));
+  glowSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex.glow, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false }));
+  glowSprite.position.set(430, 300, -700);
+  glowSprite.scale.set(300, 300, 1);
+  scene.add(glowSprite);
+  sunBall = new THREE.Mesh(new THREE.SphereGeometry(38, 24, 18), new THREE.MeshBasicMaterial({ color: 0xfff3c4 }));
   sunBall.position.set(430, 300, -720);
   scene.add(sunBall);
 
   cloudGroup = new THREE.Group();
-  const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0, emissive: 0x9fc4e8, emissiveIntensity: 0.1 });
-  for (let i = 0; i < 7; i++) {
+  cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0, emissive: 0x9fc4e8, emissiveIntensity: 0.1 });
+  const cloudCount = LOW_POWER ? 4 : 7;
+  for (let i = 0; i < cloudCount; i++) {
     const gc = new THREE.Group();
     const n = 3 + (i % 2);
     for (let j = 0; j < n; j++) {
       const s = 26 + Math.random() * 22;
-      const puff = new THREE.Mesh(new THREE.SphereGeometry(s, 14, 10), cloudMat);
+      const puff = new THREE.Mesh(new THREE.SphereGeometry(s, LOW_POWER ? 10 : 14, LOW_POWER ? 8 : 10), cloudMat);
       puff.position.set((j - n / 2) * s * 0.9, Math.random() * 12, (Math.random() - 0.5) * 30);
       puff.scale.y = 0.7;
       gc.add(puff);
@@ -590,7 +867,8 @@ export function init(canvas) {
   gtaoPass = new GTAOPass(scene, camera, W, H);
   gtaoPass.output = GTAOPass.OUTPUT.Default;
   gtaoPass.blendIntensity = 0.85;
-  gtaoPass.updateGtaoMaterial({ radius: 0.55, distanceExponent: 1.4, thickness: 1.0, scale: 1.0, samples: 16, glow: 0.0 });
+  gtaoPass.updateGtaoMaterial({ radius: 0.55, distanceExponent: 1.4, thickness: 1.0, scale: 1.0, samples: LOW_POWER ? 8 : 16, glow: 0.0 });
+  gtaoPass.enabled = quality.gtao;
   composer.addPass(gtaoPass);
 
   bloomPass = new UnrealBloomPass(new THREE.Vector2(W, H), 0.42, 0.55, 0.9);
@@ -601,6 +879,291 @@ export function init(canvas) {
   fxPass = new ShaderPass(FxShader);
   fxPass.renderToScreen = true;
   composer.addPass(fxPass);
+}
+
+const DECOR_ACCENT = { timber: "#8a5a2c", ice: "#d6f2ff", stone: "#7c848e", bunker: "#646c78", glass: "#9fe6c6", citadel: "#b58cff" };
+
+const propGeo = {};
+function ensurePropGeo() {
+  if (propGeo.ready) return;
+  propGeo.ready = true;
+  propGeo.trunk = new THREE.CylinderGeometry(4, 6, 40, 8);
+  propGeo.cone = new THREE.ConeGeometry(28, 70, 9);
+  propGeo.blob = new THREE.SphereGeometry(26, 8, 6);
+  propGeo.cube = new THREE.BoxGeometry(30, 30, 30);
+  propGeo.crystal = new THREE.OctahedronGeometry(18, 0);
+  propGeo.post = new THREE.CylinderGeometry(3, 4, 120, 8);
+  propGeo.barrel = new THREE.CylinderGeometry(14, 14, 34, 12);
+  propGeo.spike = new THREE.ConeGeometry(16, 90, 5);
+}
+
+function clearProps() {
+  if (!propGroup) return;
+  while (propGroup.children.length) {
+    const m = propGroup.children.pop();
+    m.traverse((o) => { if (o.material) o.material.dispose && o.material.dispose(); });
+  }
+}
+
+function propMaterials(style) {
+  ensurePropGeo();
+  const std = (color, rough, metal) => new THREE.MeshStandardMaterial({ color: new THREE.Color(color), roughness: rough == null ? 0.85 : rough, metalness: metal || 0 });
+  const glow = (color, i) => new THREE.MeshStandardMaterial({ color: new THREE.Color(color), emissive: new THREE.Color(color), emissiveIntensity: i == null ? 0.9 : i, roughness: 0.4 });
+  if (style === "ice") return { bark: std("#5a4636"), leaf: std("#e8f6ff", 0.7), snow: std("#ffffff", 0.6) };
+  if (style === "stone") return { post: std("#6b7078"), body: std("#7a8794"), light: glow("#ffd98a", 1.2) };
+  if (style === "bunker") return { sand: std("#8a7a54", 0.95), metal: std("#4a4f55", 0.5, 0.5) };
+  if (style === "glass") return { crystal: glow("#c7ecd9", 0.8), glow: glow("#ffd9f5", 1.2) };
+  if (style === "citadel") return { stone: std("#251b41"), fire: glow("#b58cff", 1.6) };
+  return { bark: std("#6b4a2a"), leaf: std("#4f9d4a"), leaf2: std("#63b83c") };
+}
+
+function buildProps(style) {
+  if (!scene) return;
+  if (!propGroup) { propGroup = new THREE.Group(); scene.add(propGroup); }
+  clearProps();
+  ensurePropGeo();
+  const m = propMaterials(style);
+  const count = Math.max(5, Math.round(12 * (LOW_POWER ? 0.55 : 1)));
+  const span = 1700;
+  for (let i = 0; i < count; i++) {
+    let x = ((i * 197 + 130) % span) - span / 2;
+    if (x > -560 && x < 820) x += (i % 2 ? 1000 : -1000);
+    const z = -220 - ((i * 311) % 560);
+    const g = new THREE.Group();
+    if (style === "timber") {
+      const tr = new THREE.Mesh(propGeo.trunk, m.bark); tr.position.y = 20; g.add(tr);
+      const c1 = new THREE.Mesh(propGeo.cone, m.leaf); c1.position.y = 60; g.add(c1);
+      const c2 = new THREE.Mesh(propGeo.cone, m.leaf2); c2.position.y = 92; c2.scale.setScalar(0.78); g.add(c2);
+    } else if (style === "ice") {
+      const tr = new THREE.Mesh(propGeo.trunk, m.bark); tr.position.y = 16; g.add(tr);
+      const c1 = new THREE.Mesh(propGeo.cone, m.leaf); c1.position.y = 52; g.add(c1);
+      const c2 = new THREE.Mesh(propGeo.cone, m.leaf); c2.position.y = 84; c2.scale.setScalar(0.7); g.add(c2);
+      const cap = new THREE.Mesh(propGeo.cone, m.snow); cap.position.y = 100; cap.scale.setScalar(0.42); g.add(cap);
+    } else if (style === "stone") {
+      if (i % 2 === 0) {
+        const post = new THREE.Mesh(propGeo.post, m.post); post.position.y = 60; g.add(post);
+        const lamp = new THREE.Mesh(propGeo.blob, m.light); lamp.scale.setScalar(0.26); lamp.position.y = 124; g.add(lamp);
+      } else {
+        const c = new THREE.Mesh(propGeo.cube, m.body); c.scale.set(1, 1.6, 1); c.position.y = 24; g.add(c);
+      }
+    } else if (style === "bunker") {
+      if (i % 3 === 0) {
+        for (let k = 0; k < 3; k++) { const b = new THREE.Mesh(propGeo.cube, m.sand); b.scale.set(1.2, 0.4, 0.7); b.position.set((k - 1) * 26, 6 + k * 10, 0); g.add(b); }
+      } else {
+        const bar = new THREE.Mesh(propGeo.barrel, m.metal); bar.rotation.z = Math.PI / 2; bar.position.y = 14; g.add(bar);
+      }
+    } else if (style === "glass") {
+      for (let k = 0; k < 3; k++) {
+        const cr = new THREE.Mesh(propGeo.crystal, m.crystal);
+        cr.position.set((k - 1) * 22, 10 + (k % 2) * 16, (k % 2 ? 1 : -1) * 8);
+        cr.scale.set(0.7, 1.4 + (k % 2) * 0.6, 0.7);
+        g.add(cr);
+      }
+      const orb = new THREE.Mesh(propGeo.blob, m.glow); orb.scale.setScalar(0.2); orb.position.y = 46; g.add(orb);
+    } else {
+      const sp = new THREE.Mesh(propGeo.spike, m.stone); sp.position.y = 45; g.add(sp);
+      const flame = new THREE.Mesh(propGeo.blob, m.fire); flame.scale.setScalar(0.16); flame.position.y = 96; g.add(flame);
+    }
+    g.position.set(x, GROUND_TOP, z);
+    g.scale.setScalar(0.85 + (i % 3) * 0.28);
+    g.rotation.y = (i * 1.7) % (Math.PI * 2);
+    propGroup.add(g);
+  }
+}
+
+function buildDecor(meta) {
+  if (!meta || meta.pluginDecor !== "roof") return null;
+  ensurePropGeo();
+  const style = currentStyle || "timber";
+  const accent = DECOR_ACCENT[style] || "#8a5a2c";
+  const w = meta.w, h = meta.h, depth = meta.depth;
+  const top = h / 2;
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(accent), roughness: style === "bunker" ? 0.5 : 0.7, metalness: style === "bunker" ? 0.5 : 0.05 });
+  const emis = new THREE.MeshStandardMaterial({ color: new THREE.Color(accent), emissive: new THREE.Color(accent), emissiveIntensity: 0.9, roughness: 0.4 });
+  if (style === "ice" || style === "glass") { mat.transparent = true; mat.opacity = 0.88; }
+  if (style === "timber") {
+    for (const s of [-1, 1]) {
+      const slab = new THREE.Mesh(new THREE.BoxGeometry(w * 0.6, 9, depth * 0.95), mat);
+      slab.position.set(s * w * 0.22, top + 12, 0);
+      slab.rotation.z = -s * 0.6;
+      slab.castShadow = true;
+      g.add(slab);
+    }
+  } else if (style === "ice") {
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(w * 1.04, 8, depth * 1.04), mat);
+    slab.position.y = top + 4; g.add(slab);
+    const n = Math.max(2, Math.min(5, Math.round(w / 42)));
+    for (let i = 0; i < n; i++) {
+      const ic = new THREE.Mesh(new THREE.ConeGeometry(4, 22, 6), emis);
+      ic.position.set(-w / 2 + (i + 0.5) * (w / n), top - 8, (i % 2 ? 1 : -1) * depth * 0.28);
+      ic.rotation.x = Math.PI;
+      ic.scale.setScalar(0.7 + (i % 3) * 0.3);
+      g.add(ic);
+    }
+  } else if (style === "stone") {
+    const n = Math.max(3, Math.min(6, Math.round(w / 34)));
+    for (let i = 0; i < n; i++) {
+      const c = new THREE.Mesh(new THREE.BoxGeometry(w / n * 0.8, 14, depth * 0.8), mat);
+      c.position.set(-w / 2 + (i + 0.5) * (w / n), top + 8, 0);
+      g.add(c);
+    }
+  } else if (style === "bunker") {
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 60, 6), mat);
+    rod.position.y = top + 30; g.add(rod);
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(7, 10, 8), emis);
+    ball.position.y = top + 62; g.add(ball);
+    for (const s of [-1, 1]) {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(18, 10, 18), mat);
+      b.position.set(s * w * 0.3, top + 6, 0); g.add(b);
+    }
+  } else if (style === "glass") {
+    const d = new THREE.Mesh(new THREE.OctahedronGeometry(Math.min(28, w * 0.3), 0), emis);
+    d.position.y = top + 20; d.scale.set(1.35, 1, 1); g.add(d);
+  } else if (style === "citadel") {
+    const n = Math.max(2, Math.min(4, Math.round(w / 60)));
+    for (let i = 0; i < n; i++) {
+      const sp = new THREE.Mesh(new THREE.ConeGeometry(11, 60, 5), mat);
+      sp.position.set(-w / 2 + (i + 0.5) * (w / n), top + 30, 0);
+      g.add(sp);
+    }
+    const orb = new THREE.Mesh(new THREE.SphereGeometry(9, 12, 10), emis);
+    orb.position.y = top + 16; g.add(orb);
+  }
+  return g.children.length ? g : null;
+}
+
+function refreshBlockDecor() {
+  blockMeshes.forEach((mesh) => {
+    const old = mesh.getObjectByName("decor");
+    if (old) {
+      mesh.remove(old);
+      old.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose && o.material.dispose(); });
+    }
+    const decor = buildDecor(mesh.userData);
+    if (decor) { decor.name = "decor"; mesh.add(decor); }
+  });
+}
+
+const WEATHER_SPECS = {
+  leaves: { color: "#c98a3a", count: 90, size: 8, vx: 0.5, vy: 0.5, sway: 1.4, opacity: 0.85 },
+  snow: { color: "#eef7ff", count: 160, size: 7, vx: 0.3, vy: 0.75, sway: 0.5, opacity: 0.9 },
+  dust: { color: "#cdbfa8", count: 70, size: 5, vx: 0.55, vy: 0.08, sway: 0.9, opacity: 0.5 },
+  embers: { color: "#ff9a4a", count: 80, size: 5, vx: 0.2, vy: -0.7, sway: 1.2, opacity: 0.9, additive: true },
+  sparkles: { color: "#ffe6ff", count: 90, size: 6, vx: 0.15, vy: -0.3, sway: 1.6, opacity: 0.85, additive: true },
+  ash: { color: "#a99bc4", count: 100, size: 5, vx: 0.25, vy: 0.4, sway: 1.0, opacity: 0.7 }
+};
+
+function removeWeather() {
+  if (!weather) return;
+  scene.remove(weather.points);
+  weather.points.geometry.dispose();
+  weather.points.material.dispose();
+  weather = null;
+}
+
+function buildWeather(style) {
+  removeWeather();
+  const type = (WORLD_STYLES[style] || WORLD_STYLES.timber).weather;
+  const spec = WEATHER_SPECS[type];
+  if (!spec) return;
+  const count = Math.max(24, Math.round(spec.count * (LOW_POWER ? 0.5 : 1)));
+  const positions = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    positions[i * 3] = -1700 + Math.random() * 3400;
+    positions[i * 3 + 1] = -260 + Math.random() * 1150;
+    positions[i * 3 + 2] = -280 + Math.random() * 680;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  const mat = new THREE.PointsMaterial({
+    map: tex.soft, color: new THREE.Color(spec.color), size: spec.size, transparent: true,
+    opacity: spec.opacity, depthWrite: false, sizeAttenuation: true,
+    blending: spec.additive ? THREE.AdditiveBlending : THREE.NormalBlending
+  });
+  const points = new THREE.Points(geo, mat);
+  points.frustumCulled = false;
+  scene.add(points);
+  weather = { points: points, spec: spec, count: count };
+  lastWeatherTime = state ? state.time : 0;
+}
+
+function updateWeather() {
+  if (!weather || !state) return;
+  const dt = Math.min(3, Math.max(0.2, (state.time - lastWeatherTime) / 16.67));
+  lastWeatherTime = state.time;
+  const arr = weather.points.geometry.attributes.position.array;
+  const spec = weather.spec;
+  const phase = state.time * 0.001;
+  for (let i = 0; i < weather.count; i++) {
+    const o = i * 3;
+    arr[o] += (spec.vx + Math.sin(phase + i) * spec.sway * 0.35) * dt;
+    arr[o + 1] += spec.vy * dt;
+    arr[o + 2] += Math.cos(phase * 0.8 + i * 1.7) * spec.sway * 0.25 * dt;
+    if (arr[o + 1] > 900) { arr[o + 1] = -260; arr[o] = -1700 + Math.random() * 3400; }
+    if (arr[o + 1] < -300) { arr[o + 1] = 880; arr[o] = -1700 + Math.random() * 3400; }
+    if (arr[o] > 1760) arr[o] = -1700;
+    if (arr[o] < -1760) arr[o] = 1700;
+  }
+  weather.points.geometry.attributes.position.needsUpdate = true;
+}
+
+function applyWorldTheme(style) {
+  if (!scene || !style || style === currentStyle) return;
+  const spec = WORLD_STYLES[style] || WORLD_STYLES.timber;
+  currentStyle = style;
+  themeEnv = spec.env;
+  const assets = getThemeAssets(style);
+  scene.background = assets.sky;
+  scene.fog = new THREE.Fog(new THREE.Color(spec.fog.color), spec.fog.near, spec.fog.far);
+  if (groundMesh) {
+    groundMesh.material[2].map = assets.top;
+    groundMesh.material[0].map = assets.side;
+    groundMesh.material[2].needsUpdate = true;
+    groundMesh.material[0].needsUpdate = true;
+  }
+  if (backdropMesh) {
+    backdropMesh.material.map = assets.backdrop;
+    backdropMesh.material.needsUpdate = true;
+  }
+  if (hemiLight) {
+    hemiLight.color.set(spec.hemi[0]);
+    hemiLight.groundColor.set(spec.hemi[1]);
+    hemiLight.intensity = spec.hemi[2];
+  }
+  if (keyLight) {
+    keyLight.color.set(spec.key.color);
+    keyLight.intensity = spec.key.intensity;
+  }
+  if (fillLight) fillLight.intensity = LOW_POWER ? 0.22 : 0.3;
+  if (glowSprite) glowSprite.material.color.set(spec.sun.glow);
+  if (sunBall) sunBall.material.color.set(spec.sun.color);
+  if (cloudMat) {
+    cloudMat.color.set(spec.cloud);
+    cloudMat.emissive.set(spec.sun.glow);
+  }
+  buildProps(style);
+  buildWeather(style);
+  refreshBlockDecor();
+}
+
+function applyQualityStep() {
+  qualityStep++;
+  quality.pixelRatio = 1;
+  if (qualityStep >= 2) quality.gtao = false;
+  if (renderer) renderer.setPixelRatio(quality.pixelRatio);
+  if (composer) composer.reset();
+  if (gtaoPass) gtaoPass.enabled = quality.gtao;
+}
+
+function monitorPerf() {
+  if (qualityStep >= 2 || !state) return;
+  const now = performance.now();
+  if (!monitorLast) { monitorLast = now; return; }
+  const dt = now - monitorLast;
+  monitorLast = now;
+  if (dt > 26) perfSlow++; else perfSlow = Math.max(0, perfSlow - 1);
+  if (perfSlow > 50) { applyQualityStep(); perfSlow = 0; monitorLast = 0; }
 }
 
 function beginStamp() { frameStamp++; }
@@ -949,6 +1512,8 @@ function syncClouds() {
 export function render() {
   if (!renderer || !state) return;
   const s = state;
+  monitorPerf();
+  applyWorldTheme(s.style);
   beginStamp();
 
   syncBlocks();
@@ -962,6 +1527,7 @@ export function render() {
   syncSling();
   syncQueue();
   syncClouds();
+  updateWeather();
 
   let followX = 0, followY = 0;
   if (s.activeFlight && s.birds && s.birds.length) {

@@ -176,8 +176,10 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     return b;
   }
 
-  function beam(cx, bottom, w, h, kind) {
-    return makeBlock(cx, bottom - h / 2, w, h, kind);
+  function beam(cx, bottom, w, h, kind, decor) {
+    var b = makeBlock(cx, bottom - h / 2, w, h, kind);
+    if (decor) b.plugin.decor = decor;
+    return b;
   }
   function pigAt(cx, bottom, type) {
     var r = (PIG_TYPES[type] || PIG_TYPES.small).r;
@@ -188,7 +190,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     legH = legH || 74;
     beam(cx - 44, bottom, 16, legH, kind);
     beam(cx + 44, bottom, 16, legH, kind);
-    beam(cx, bottom - legH, 118, 14, kind);
+    beam(cx, bottom - legH, 118, 14, kind, "roof");
     if (pigType) pigAt(cx, bottom, pigType);
   }
 
@@ -198,7 +200,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
       var b = bottom - i * th;
       beam(cx - 38, b, 15, th, kind);
       beam(cx + 38, b, 15, th, kind);
-      beam(cx, b - th, 108, 13, kind);
+      beam(cx, b - th, 108, 13, kind, i === tiers - 1 ? "roof" : null);
       if (pigs && pigs[i]) pigAt(cx, b, pigs[i]);
     }
   }
@@ -206,7 +208,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
   function gate(cx, bottom, span, legH, kind) {
     beam(cx - span / 2, bottom, 18, legH, kind);
     beam(cx + span / 2, bottom, 18, legH, kind);
-    beam(cx, bottom - legH, span + 18, 16, kind);
+    beam(cx, bottom - legH, span + 18, 16, kind, "roof");
   }
 
   function makeDebris(x, y, w, h, kind, vx, vy) {
@@ -629,6 +631,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     {
       name: "Timber Yard",
       icon: "\uD83C\uDF33",
+      style: "timber",
       a: "#ca8b4d", b: "#7a5230", desc: "Splinter the wooden scaffolds.",
       levels: [
         {
@@ -714,6 +717,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     {
       name: "Ice Fortress",
       icon: "\u2744\uFE0F",
+      style: "ice",
       a: "#a9e6ff", b: "#3f7fa6", desc: "Shatter the frozen walls.",
       levels: [
         {
@@ -811,6 +815,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     {
       name: "Stone Skyline",
       icon: "\uD83C\uDFD9\uFE0F",
+      style: "stone",
       a: "#9aa3ad", b: "#5a636e", desc: "Topple the concrete towers.",
       levels: [
         {
@@ -903,6 +908,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     {
       name: "Bunker Hill",
       icon: "\uD83D\uDEE1\uFE0F",
+      style: "bunker",
       a: "#8f97a4", b: "#3c434d", desc: "Crack the armored bunkers.",
       levels: [
         {
@@ -995,6 +1001,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     {
       name: "Glass Garden",
       icon: "\uD83D\uDC8E",
+      style: "glass",
       a: "#c7ecd9", b: "#5aa98a", desc: "Breeze through brittle glass.",
       levels: [
         {
@@ -1088,6 +1095,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     {
       name: "The Citadel",
       icon: "\uD83D\uDC51",
+      style: "citadel",
       a: "#b58cff", b: "#5b3a9e", desc: "The final stronghold. Everything goes.",
       levels: [
         {
@@ -1556,7 +1564,8 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
       slingX: SLING_X, slingY: SLING_Y, maxPull: MAX_PULL, launch: LAUNCH,
       groundY: GROUND_Y, gravityStep: engine.gravity.y * engine.gravity.scale * STEP * STEP,
       activeFlight: activeFlight, launched: launched, time: time, shake: shake, flash: flash,
-      blinking: blinking, slowmo: slowmo, impact: impact
+      blinking: blinking, slowmo: slowmo, impact: impact,
+      world: currentWorld, style: (WORLDS[currentWorld] && WORLDS[currentWorld].style) || "timber"
     });
     render3D();
     impact = null;
