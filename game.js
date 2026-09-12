@@ -631,6 +631,69 @@
         pigAt(bx + 120, GROUND_Y - 230, "small");
         pigAt(bx + 180, GROUND_Y, "medium");
       }
+    },
+    {
+      name: "Bunker Hill",
+      birds: ["black", "yellow", "black", "blue", "red"],
+      build: function () {
+        var bx = 660;
+        beam(bx, GROUND_Y, 26, 120, "metal");
+        beam(bx + 160, GROUND_Y, 26, 120, "metal");
+        beam(bx + 80, GROUND_Y - 120, 200, 24, "stone");
+        beam(bx + 30, GROUND_Y - 144, 22, 90, "wood");
+        beam(bx + 130, GROUND_Y - 144, 22, 90, "wood");
+        beam(bx + 80, GROUND_Y - 234, 140, 22, "stone");
+        beam(bx + 40, GROUND_Y - 144, 40, 44, "tnt");
+        pigAt(bx + 80, GROUND_Y - 144, "helmet");
+        pigAt(bx + 80, GROUND_Y - 256, "medium");
+        pigAt(bx + 160, GROUND_Y, "small");
+        beam(bx + 240, GROUND_Y, 40, 120, "wood");
+        beam(bx + 240, GROUND_Y - 120, 40, 44, "tnt");
+      }
+    },
+    {
+      name: "Glass Garden",
+      birds: ["blue", "blue", "yellow", "blue", "black"],
+      build: function () {
+        var bx = 640;
+        beam(bx, GROUND_Y, 18, 100, "ice");
+        beam(bx + 120, GROUND_Y, 18, 100, "ice");
+        beam(bx + 60, GROUND_Y - 100, 160, 16, "glass");
+        beam(bx + 30, GROUND_Y - 116, 16, 80, "glass");
+        beam(bx + 90, GROUND_Y - 116, 16, 80, "glass");
+        beam(bx + 60, GROUND_Y - 196, 120, 16, "ice");
+        pigAt(bx + 60, GROUND_Y, "small");
+        pigAt(bx + 60, GROUND_Y - 116, "small");
+        pigAt(bx + 30, GROUND_Y, "medium");
+        beam(bx + 180, GROUND_Y, 18, 90, "glass");
+        beam(bx + 260, GROUND_Y, 18, 90, "glass");
+        beam(bx + 220, GROUND_Y - 90, 120, 16, "glass");
+        pigAt(bx + 220, GROUND_Y, "medium");
+        pigAt(bx + 220, GROUND_Y - 106, "small");
+      }
+    },
+    {
+      name: "The Citadel",
+      birds: ["red", "yellow", "black", "blue", "black", "yellow"],
+      build: function () {
+        var bx = 660;
+        beam(bx, GROUND_Y, 24, 120, "stone");
+        beam(bx + 150, GROUND_Y, 24, 120, "stone");
+        beam(bx + 300, GROUND_Y, 24, 120, "stone");
+        beam(bx + 75, GROUND_Y - 120, 150, 20, "wood");
+        beam(bx + 225, GROUND_Y - 120, 150, 20, "wood");
+        beam(bx + 45, GROUND_Y - 140, 22, 80, "stone");
+        beam(bx + 150, GROUND_Y - 140, 22, 80, "stone");
+        beam(bx + 255, GROUND_Y - 140, 22, 80, "stone");
+        beam(bx + 150, GROUND_Y - 220, 270, 20, "stone");
+        pigAt(bx + 75, GROUND_Y, "helmet");
+        pigAt(bx + 225, GROUND_Y, "big");
+        pigAt(bx + 95, GROUND_Y - 140, "medium");
+        pigAt(bx + 205, GROUND_Y - 140, "medium");
+        pigAt(bx + 90, GROUND_Y - 240, "small");
+        pigAt(bx + 200, GROUND_Y - 240, "small");
+        beam(bx + 380, GROUND_Y, 44, 44, "tnt");
+      }
     }
   ];
 
