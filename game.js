@@ -65,6 +65,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
   var score = 0, bestScore = 0;
   var shake = 0, time = 0;
   var flash = 0, blinking = 0, blinkTimer = 2400;
+  var slowmo = 0, impact = null, trailTick = 0;
   var birdQueue = [];
   var currentLevel = 0;
   var unlocked = 1;
@@ -316,6 +317,8 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     sfxBoom();
     shake = Math.max(shake, 14);
     flash = Math.max(flash, 0.9);
+    impact = { x: x, y: y, p: 1 };
+    slowmo = Math.max(slowmo, 0.85);
     addRing(x, y, radius, "rgba(255,200,90,0.9)", 8, true);
     addRing(x, y, radius * 0.55, "rgba(255,255,255,0.9)", 6, true);
     addParticles(x, y, 34, { colors: ["#ffde7a", "#ff9d3b", "#f2542d", "#6b6b6b", "rgba(120,120,120,0.6)"], speed: 9, r: 9, decay: 0.022, grav: 0.05, glow: true });
@@ -367,6 +370,10 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
         applyDamage(self, dmg, contact);
       }
       if (rel > 5) sfxThud(rel);
+      if (rel > 4.5) {
+        impact = { x: contact.x, y: contact.y, p: clamp((rel - 4) / 6, 0, 1) };
+        if (rel > 8) slowmo = Math.max(slowmo, clamp((rel - 8) / 16, 0, 0.6));
+      }
     }
   });
 
@@ -484,7 +491,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     if (bird) World.remove(world, bird);
     blocks = []; pigs = []; debris = []; birds = []; particles = []; popups = []; rings = [];
     bird = null; score = 0; levelDone = false; activeFlight = false; dragging = false; losePending = false;
-    flash = 0; blinking = 0;
+    flash = 0; blinking = 0; slowmo = 0; impact = null;
     buildLevel(currentLevel);
   }
 
@@ -852,8 +859,10 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
   var last = performance.now();
   var acc = 0;
   function loop(now) {
-    var frame = Math.min(60, now - last);
+    var real = Math.min(60, now - last);
     last = now;
+    if (slowmo > 0.01) slowmo *= 0.94; else slowmo = 0;
+    var frame = real * (1 - slowmo * 0.72);
     time += frame;
 
     acc += frame;
@@ -868,6 +877,19 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     updateParticles(frame);
     updateDebris(frame);
     updateFlight(frame);
+
+    trailTick += real;
+    if (trailTick > 42) {
+      trailTick = 0;
+      for (var tr = 0; tr < birds.length; tr++) {
+        var tb = birds[tr];
+        var tsp = Math.hypot(tb.velocity.x, tb.velocity.y);
+        if (tsp > 3) {
+          addParticles(tb.position.x - tb.velocity.x * 0.6, tb.position.y - tb.velocity.y * 0.6, 1,
+            { colors: ["rgba(255,255,255,0.42)", "rgba(255,235,190,0.32)"], speed: 0.4, r: 4, decay: 0.06, grav: -0.02, type: "smoke" });
+        }
+      }
+    }
 
     if (shake > 0.1) shake *= 0.88; else shake = 0;
 
@@ -891,9 +913,10 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
       slingX: SLING_X, slingY: SLING_Y, maxPull: MAX_PULL, launch: LAUNCH,
       groundY: GROUND_Y, gravityStep: engine.gravity.y * engine.gravity.scale * STEP * STEP,
       activeFlight: activeFlight, launched: launched, time: time, shake: shake, flash: flash,
-      blinking: blinking
+      blinking: blinking, slowmo: slowmo, impact: impact
     });
     render3D();
+    impact = null;
     if (flash > 0.01) flash *= 0.8; else flash = 0;
     requestAnimationFrame(loop);
   }

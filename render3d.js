@@ -1,4 +1,10 @@
 import * as THREE from "three";
+import { EffectComposer } from "./vendor/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "./vendor/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "./vendor/addons/postprocessing/UnrealBloomPass.js";
+import { GTAOPass } from "./vendor/addons/postprocessing/GTAOPass.js";
+import { ShaderPass } from "./vendor/addons/postprocessing/ShaderPass.js";
+import { OutputPass } from "./vendor/addons/postprocessing/OutputPass.js";
 
 const W = 1000, H = 600;
 const GROUND_TOP = -230;
@@ -6,9 +12,69 @@ const YAXIS = new THREE.Vector3(0, 1, 0);
 const CAM_POS = { x: -300, y: 285, z: 1120 };
 const CAM_LOOK = { x: 0, y: -55, z: 70 };
 
+const FxShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    time: { value: 0 },
+    shockA: { value: 0 },
+    shockR: { value: 0 },
+    shockPos: { value: new THREE.Vector2(0.5, 0.5) },
+    vignette: { value: 0.34 },
+    grain: { value: 0.05 },
+    aberr: { value: 0.0016 }
+  },
+  vertexShader: [
+    "varying vec2 vUv;",
+    "void main() {",
+    "  vUv = uv;",
+    "  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);",
+    "}"
+  ].join("\n"),
+  fragmentShader: [
+    "uniform sampler2D tDiffuse;",
+    "uniform float time;",
+    "uniform float shockA;",
+    "uniform float shockR;",
+    "uniform vec2 shockPos;",
+    "uniform float vignette;",
+    "uniform float grain;",
+    "uniform float aberr;",
+    "varying vec2 vUv;",
+    "float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }",
+    "void main() {",
+    "  vec2 uv = vUv;",
+    "  vec2 d = uv - shockPos;",
+    "  float dist = length(d);",
+    "  if (shockA > 0.001) {",
+    "    float ring = exp(-pow((dist - shockR) / 0.06, 2.0));",
+    "    uv += normalize(d + 1e-5) * ring * shockA * 0.09;",
+    "  }",
+    "  float amt = aberr * (1.0 + shockA * 2.0);",
+    "  float r = texture2D(tDiffuse, uv + vec2(amt, 0.0)).r;",
+    "  float g = texture2D(tDiffuse, uv).g;",
+    "  float b = texture2D(tDiffuse, uv - vec2(amt, 0.0)).b;",
+    "  vec3 col = vec3(r, g, b);",
+    "  float lum = dot(col, vec3(0.299, 0.587, 0.114));",
+    "  col = mix(col, col * 1.06, smoothstep(0.75, 1.0, lum));",
+    "  float vd = distance(vUv, vec2(0.5));",
+    "  col *= 1.0 - vignette * smoothstep(0.42, 0.86, vd);",
+    "  col += (hash(vUv * 1024.0 + time) - 0.5) * grain;",
+    "  gl_FragColor = vec4(col, 1.0);",
+    "}"
+  ].join("\n")
+};
+
 let renderer, scene, camera, state = null;
-let root, sunGlow, flashQuad, vignetteQuad;
+let root, flashQuad;
+let composer, bloomPass, gtaoPass, fxPass;
 let frameStamp = 1;
+const camSmooth = { x: 0, y: 0, fov: 0 };
+let prevLaunched = false;
+let shockA = 0, shockR = 0;
+const shockVec = new THREE.Vector2(0.5, 0.5);
+const projVec = new THREE.Vector3();
+let trailTick = 0;
+let lastImpact = null;
 
 const blockMeshes = new Map();
 const pigMeshes = new Map();
@@ -17,7 +83,7 @@ const debrisMeshes = new Map();
 const popupPool = [];
 const ringPool = [];
 const trajPool = [];
-const particlePools = { dot: [], shard: [], splinter: [], rock: [] };
+const particlePools = { dot: [], shard: [], splinter: [], rock: [], smoke: [] };
 let cloudGroup, backdrop;
 let slingGroup, bandL, bandR, powerBar, powerBarBg;
 let queueGroup;
@@ -61,6 +127,37 @@ function noiseOn(g, size, n, dark, light) {
     g.fillStyle = Math.random() < 0.5 ? dark : light;
     g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
   }
+}
+
+function normalFromCanvas(src, strength) {
+  const w = src.width, h = src.height;
+  const ctx = src.getContext("2d");
+  const data = ctx.getImageData(0, 0, w, h).data;
+  const lum = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) lum[i] = (data[i * 4] * 0.299 + data[i * 4 + 1] * 0.587 + data[i * 4 + 2] * 0.114) / 255;
+  const out = document.createElement("canvas");
+  out.width = w; out.height = h;
+  const g = out.getContext("2d");
+  const img = g.createImageData(w, h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const xl = (x - 1 + w) % w, xr = (x + 1) % w, yu = (y - 1 + h) % h, yd = (y + 1) % h;
+      const dx = (lum[y * w + xr] - lum[y * w + xl]) * strength;
+      const dy = (lum[yd * w + x] - lum[yu * w + x]) * strength;
+      let nx = -dx, ny = -dy, nz = 1;
+      const len = Math.hypot(nx, ny, nz);
+      const i = (y * w + x) * 4;
+      img.data[i] = ((nx / len) * 0.5 + 0.5) * 255;
+      img.data[i + 1] = ((ny / len) * 0.5 + 0.5) * 255;
+      img.data[i + 2] = ((nz / len) * 0.5 + 0.5) * 255;
+      img.data[i + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(out);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 4;
+  return t;
 }
 
 const tex = {};
@@ -191,10 +288,43 @@ function buildTextures() {
     g.fillStyle = r; g.fillRect(0, 0, s, s);
   });
 
+  tex.soft = canvasTex(64, 64, (g, s) => {
+    const r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    r.addColorStop(0, "rgba(255,255,255,1)"); r.addColorStop(0.35, "rgba(255,255,255,0.5)"); r.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = r; g.fillRect(0, 0, s, s);
+  });
+
   tex.vignette = canvasTex(256, 256, (g, s) => {
     const r = g.createRadialGradient(128, 128, 80, 128, 128, 210);
     r.addColorStop(0, "rgba(0,0,0,0)"); r.addColorStop(1, "rgba(6,12,20,0.42)");
     g.fillStyle = r; g.fillRect(0, 0, s, s);
+  });
+
+  tex.env = canvasTex(512, 256, (g) => {
+    const grd = g.createLinearGradient(0, 0, 0, 256);
+    grd.addColorStop(0, "#8fc3ee"); grd.addColorStop(0.42, "#dff2fc"); grd.addColorStop(0.52, "#cfe3c0"); grd.addColorStop(1, "#5c4630");
+    g.fillStyle = grd; g.fillRect(0, 0, 512, 256);
+    const sun = g.createRadialGradient(380, 70, 4, 380, 70, 120);
+    sun.addColorStop(0, "rgba(255,246,210,1)"); sun.addColorStop(0.3, "rgba(255,236,160,0.7)"); sun.addColorStop(1, "rgba(255,236,160,0)");
+    g.fillStyle = sun; g.fillRect(220, 0, 320, 220);
+  });
+  tex.env.mapping = THREE.EquirectangularReflectionMapping;
+
+  const normalSpec = [
+    ["wood", tex.wood, 5.5, null],
+    ["stone", tex.stone, 9, null],
+    ["ice", tex.ice, 4, null],
+    ["glass", tex.glass, 3, null],
+    ["metal", tex.metal, 5, null],
+    ["sand", tex.sand, 6, null],
+    ["tnt", tex.tnt, 6, null],
+    ["grass", tex.grass, 7, [45, 22]],
+    ["dirt", tex.dirt, 8, [40, 6]]
+  ];
+  normalSpec.forEach((spec) => {
+    const n = normalFromCanvas(spec[1].image, spec[2]);
+    if (spec[3]) n.repeat.set(spec[3][0], spec[3][1]);
+    tex[spec[0] + "Norm"] = n;
   });
 }
 
@@ -204,14 +334,15 @@ const outIce = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true,
 const outMetal = new THREE.LineBasicMaterial({ color: 0x333a44, transparent: true, opacity: 0.35 });
 
 function blockMaterial(kind) {
+  const nscale = new THREE.Vector2(0.7, 0.7);
   switch (kind) {
-    case "stone": return new THREE.MeshStandardMaterial({ map: tex.stone, roughness: 0.92, metalness: 0.04 });
-    case "ice": return new THREE.MeshStandardMaterial({ map: tex.ice, roughness: 0.08, metalness: 0.10, transparent: true, opacity: 0.66, emissive: 0x2a6b90, emissiveIntensity: 0.18 });
-    case "glass": return new THREE.MeshStandardMaterial({ map: tex.glass, roughness: 0.05, metalness: 0.10, transparent: true, opacity: 0.55, emissive: 0x1f7a55, emissiveIntensity: 0.14 });
-    case "metal": return new THREE.MeshStandardMaterial({ map: tex.metal, roughness: 0.34, metalness: 0.78 });
-    case "sand": return new THREE.MeshStandardMaterial({ map: tex.sand, roughness: 1.0, metalness: 0.0 });
-    case "tnt": return new THREE.MeshStandardMaterial({ map: tex.tnt, roughness: 0.7, metalness: 0.05 });
-    default: return new THREE.MeshStandardMaterial({ map: tex.wood, roughness: 0.86, metalness: 0.03 });
+    case "stone": return new THREE.MeshStandardMaterial({ map: tex.stone, normalMap: tex.stoneNorm, normalScale: nscale, roughness: 0.92, metalness: 0.04, envMapIntensity: 0.55 });
+    case "ice": return new THREE.MeshStandardMaterial({ map: tex.ice, normalMap: tex.iceNorm, normalScale: nscale, roughness: 0.08, metalness: 0.10, transparent: true, opacity: 0.66, emissive: 0x2a6b90, emissiveIntensity: 0.18, envMapIntensity: 1.35 });
+    case "glass": return new THREE.MeshStandardMaterial({ map: tex.glass, normalMap: tex.glassNorm, normalScale: nscale, roughness: 0.05, metalness: 0.10, transparent: true, opacity: 0.55, emissive: 0x1f7a55, emissiveIntensity: 0.14, envMapIntensity: 1.35 });
+    case "metal": return new THREE.MeshStandardMaterial({ map: tex.metal, normalMap: tex.metalNorm, normalScale: nscale, roughness: 0.34, metalness: 0.78, envMapIntensity: 1.5 });
+    case "sand": return new THREE.MeshStandardMaterial({ map: tex.sand, normalMap: tex.sandNorm, normalScale: nscale, roughness: 1.0, metalness: 0.0, envMapIntensity: 0.5 });
+    case "tnt": return new THREE.MeshStandardMaterial({ map: tex.tnt, normalMap: tex.tntNorm, normalScale: nscale, roughness: 0.7, metalness: 0.05, envMapIntensity: 0.5, emissive: 0x3a0a08, emissiveIntensity: 0.25 });
+    default: return new THREE.MeshStandardMaterial({ map: tex.wood, normalMap: tex.woodNorm, normalScale: nscale, roughness: 0.86, metalness: 0.03, envMapIntensity: 0.5 });
   }
 }
 function outlineFor(kind) {
@@ -388,7 +519,8 @@ export function init(canvas) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(W, H, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.NoToneMapping;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -396,12 +528,17 @@ export function init(canvas) {
   buildTextures();
   scene.background = tex.sky;
 
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  pmrem.compileEquirectangularShader();
+  scene.environment = pmrem.fromEquirectangular(tex.env).texture;
+  pmrem.dispose();
+
   camera = new THREE.PerspectiveCamera(36, W / H, 1, 5000);
   camera.position.set(CAM_POS.x, CAM_POS.y, CAM_POS.z);
   camera.lookAt(CAM_LOOK.x, CAM_LOOK.y, CAM_LOOK.z);
 
-  scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x6b4c2a, 0.5));
-  const key = new THREE.DirectionalLight(0xfff2d0, 2.6);
+  scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x6b4c2a, 0.38));
+  const key = new THREE.DirectionalLight(0xfff2d0, 2.2);
   key.position.set(520, 900, 760);
   key.target.position.set(0, -120, 0);
   key.castShadow = true;
@@ -424,8 +561,8 @@ export function init(canvas) {
   scene.add(root);
 
   const groundGeo = new THREE.BoxGeometry(4200, 600, 2000);
-  const topMat = new THREE.MeshStandardMaterial({ map: tex.grass, roughness: 1, metalness: 0 });
-  const sideMat = new THREE.MeshStandardMaterial({ map: tex.dirt, roughness: 1, metalness: 0 });
+  const topMat = new THREE.MeshStandardMaterial({ map: tex.grass, normalMap: tex.grassNorm, normalScale: new THREE.Vector2(0.6, 0.6), roughness: 1, metalness: 0, envMapIntensity: 0.45 });
+  const sideMat = new THREE.MeshStandardMaterial({ map: tex.dirt, normalMap: tex.dirtNorm, normalScale: new THREE.Vector2(0.6, 0.6), roughness: 1, metalness: 0, envMapIntensity: 0.35 });
   const ground = new THREE.Mesh(groundGeo, [sideMat, sideMat, topMat, sideMat, sideMat, sideMat]);
   ground.position.set(0, GROUND_TOP - 300, 0);
   ground.receiveShadow = true;
@@ -446,7 +583,7 @@ export function init(canvas) {
   scene.add(sunBall);
 
   cloudGroup = new THREE.Group();
-  const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0, emissive: 0x9fc4e8, emissiveIntensity: 0.22 });
+  const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0, emissive: 0x9fc4e8, emissiveIntensity: 0.1 });
   for (let i = 0; i < 7; i++) {
     const gc = new THREE.Group();
     const n = 3 + (i % 2);
@@ -480,10 +617,24 @@ export function init(canvas) {
   flashQuad.position.set(0, 0, -2);
   scene.add(camera);
 
-  vignetteQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: tex.vignette, transparent: true, depthTest: false, depthWrite: false }));
-  vignetteQuad.frustumCulled = false;
-  camera.add(vignetteQuad);
-  vignetteQuad.position.set(0, 0, -2.0001);
+  composer = new EffectComposer(renderer);
+  composer.setSize(W, H);
+  composer.addPass(new RenderPass(scene, camera));
+
+  gtaoPass = new GTAOPass(scene, camera, W, H);
+  gtaoPass.output = GTAOPass.OUTPUT.Default;
+  gtaoPass.blendIntensity = 0.85;
+  gtaoPass.updateGtaoMaterial({ radius: 0.55, distanceExponent: 1.4, thickness: 1.0, scale: 1.0, samples: 16, glow: 0.0 });
+  composer.addPass(gtaoPass);
+
+  bloomPass = new UnrealBloomPass(new THREE.Vector2(W, H), 0.42, 0.55, 0.9);
+  composer.addPass(bloomPass);
+
+  composer.addPass(new OutputPass());
+
+  fxPass = new ShaderPass(FxShader);
+  fxPass.renderToScreen = true;
+  composer.addPass(fxPass);
 }
 
 function beginStamp() { frameStamp++; }
@@ -601,35 +752,50 @@ function syncDebris() {
   });
 }
 
-function particleMesh(type) {
+function particleObject(type) {
+  if (type === "dot" || type === "smoke") {
+    const mat = new THREE.SpriteMaterial({
+      map: tex.soft,
+      transparent: true,
+      depthWrite: false,
+      blending: type === "smoke" ? THREE.NormalBlending : THREE.AdditiveBlending
+    });
+    return new THREE.Sprite(mat);
+  }
   let geo;
   if (type === "shard") geo = new THREE.OctahedronGeometry(1, 0);
-  else if (type === "splinter" || type === "rock") geo = new THREE.BoxGeometry(1.2, 0.7, 0.5);
-  else geo = new THREE.SphereGeometry(1, 8, 6);
-  return new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true }));
+  else geo = new THREE.BoxGeometry(1.2, 0.7, 0.5);
+  return new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false }));
 }
 
 function syncParticles() {
-  const counts = { dot: 0, shard: 0, splinter: 0, rock: 0 };
+  const counts = { dot: 0, shard: 0, splinter: 0, rock: 0, smoke: 0 };
   const list = state.particles;
   for (let i = 0; i < list.length; i++) {
     const p = list[i];
     let type = p.type || "dot";
     if (!particlePools[type]) type = "dot";
     const pool = particlePools[type];
-    let mesh = pool[counts[type]];
-    if (!mesh) {
-      mesh = particleMesh(type);
-      pool[counts[type]] = mesh;
-      root.add(mesh);
+    let obj = pool[counts[type]];
+    if (!obj) {
+      obj = particleObject(type);
+      pool[counts[type]] = obj;
+      root.add(obj);
     }
     const c = parseCss(p.color);
-    mesh.material.color.copy(c.color);
-    mesh.material.opacity = Math.max(0, p.life) * c.alpha;
-    mesh.position.set(wx(p.x), wy(p.y), (Math.random() - 0.5) * 20);
-    mesh.rotation.set(p.rot, p.rot * 0.7, p.rot);
-    mesh.scale.setScalar(Math.max(0.1, p.r * 0.85));
-    mesh.visible = true;
+    const life = Math.max(0, p.life);
+    obj.material.color.copy(c.color);
+    obj.material.opacity = life * c.alpha;
+    obj.position.set(wx(p.x), wy(p.y), (Math.random() - 0.5) * 20);
+    if (obj.isSprite) {
+      const grow = type === "smoke" ? 1.7 - life * 0.7 : 1;
+      obj.scale.setScalar(Math.max(0.1, p.r * (type === "smoke" ? 2.2 : 1.7) * grow));
+      obj.material.rotation = p.rot || 0;
+    } else {
+      obj.rotation.set(p.rot, p.rot * 0.7, p.rot);
+      obj.scale.setScalar(Math.max(0.1, p.r * 0.85));
+    }
+    obj.visible = true;
     counts[type]++;
   }
   Object.keys(particlePools).forEach((type) => {
@@ -816,6 +982,7 @@ function syncClouds() {
 
 export function render() {
   if (!renderer || !state) return;
+  const s = state;
   beginStamp();
 
   syncBlocks();
@@ -830,17 +997,53 @@ export function render() {
   syncQueue();
   syncClouds();
 
-  const shake = state.shake || 0;
+  let followX = 0, followY = 0;
+  if (s.activeFlight && s.birds && s.birds.length) {
+    let lead = s.birds[0];
+    for (let i = 1; i < s.birds.length; i++) if (s.birds[i].position.x > lead.position.x) lead = s.birds[i];
+    followX = THREE.MathUtils.clamp((wx(lead.position.x) - 40) * 0.5, -160, 320);
+    followY = THREE.MathUtils.clamp((wy(lead.position.y) - 40) * 0.16, -50, 80);
+  }
+  camSmooth.x += (followX - camSmooth.x) * 0.08;
+  camSmooth.y += (followY - camSmooth.y) * 0.08;
+  if (s.launched && !prevLaunched) camSmooth.fov = 1;
+  prevLaunched = !!s.launched;
+  camSmooth.fov *= 0.9;
+
+  const slow = s.slowmo || 0;
+  const fov = 36 + camSmooth.fov * 9 - slow * 4;
+  if (Math.abs(camera.fov - fov) > 0.005) { camera.fov = fov; camera.updateProjectionMatrix(); }
+
+  const shake = s.shake || 0;
   camera.position.set(
-    CAM_POS.x + (Math.random() - 0.5) * shake,
-    CAM_POS.y + (Math.random() - 0.5) * shake,
+    CAM_POS.x + camSmooth.x + (Math.random() - 0.5) * shake,
+    CAM_POS.y + camSmooth.y + (Math.random() - 0.5) * shake,
     CAM_POS.z
   );
-  camera.lookAt(CAM_LOOK.x, CAM_LOOK.y, CAM_LOOK.z);
+  camera.lookAt(CAM_LOOK.x + camSmooth.x * 0.5, CAM_LOOK.y + camSmooth.y * 0.5, CAM_LOOK.z);
 
-  flashQuad.material.opacity = Math.max(0, Math.min(1, state.flash || 0)) * 0.6;
+  flashQuad.material.opacity = Math.max(0, Math.min(1, s.flash || 0)) * 0.6;
 
-  renderer.render(scene, camera);
+  if (s.impact && s.impact !== lastImpact) {
+    lastImpact = s.impact;
+    projVec.set(wx(s.impact.x), wy(s.impact.y), 0).project(camera);
+    shockVec.set(projVec.x * 0.5 + 0.5, projVec.y * 0.5 + 0.5);
+    shockA = Math.min(1, shockA + (s.impact.p || 1));
+    shockR = 0;
+  }
+  shockR += 0.018;
+  shockA *= 0.9;
+  fxPass.uniforms.time.value = s.time * 0.001;
+  fxPass.uniforms.shockA.value = shockA;
+  fxPass.uniforms.shockR.value = shockR;
+  fxPass.uniforms.shockPos.value.copy(shockVec);
+  fxPass.uniforms.grain.value = 0.032 + slow * 0.02;
+  fxPass.uniforms.vignette.value = 0.3 + slow * 0.06;
+  fxPass.uniforms.aberr.value = 0.0009 + slow * 0.0008;
+
+  bloomPass.strength = 0.42 + slow * 0.14;
+
+  composer.render();
 }
 
 export function setState(s) { state = s; }
