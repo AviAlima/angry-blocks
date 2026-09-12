@@ -453,6 +453,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
       return;
     }
     Body.setStatic(bird, false);
+    wake(bird);
     Body.setVelocity(bird, { x: -pullVec.x * LAUNCH, y: -pullVec.y * LAUNCH });
     Body.setAngularVelocity(bird, -0.12);
     launched = true; abilityUsed = false; activeFlight = true; settleTimer = 0;
@@ -601,6 +602,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     var type = birdQueue.shift();
     bird = makeBird(SLING_X, SLING_Y, type);
     Body.setStatic(bird, true);
+    wake(bird);
     World.add(world, bird);
     birds.push(bird);
     launched = false; abilityUsed = false; activeFlight = false;
@@ -1658,6 +1660,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
       pullVec = { x: dx, y: dy };
       Body.setPosition(bird, { x: SLING_X + dx, y: SLING_Y + dy });
       Body.setStatic(bird, false);
+      wake(bird);
       Body.setVelocity(bird, { x: -dx * LAUNCH, y: -dy * LAUNCH });
       launched = true; abilityUsed = false; activeFlight = true; settleTimer = 0;
       updateHud();
@@ -1684,6 +1687,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
         pullVec = { x: dx, y: dy };
         Body.setPosition(bird, { x: SLING_X + dx, y: SLING_Y + dy });
         Body.setStatic(bird, false);
+        wake(bird);
         Body.setVelocity(bird, { x: -dx * LAUNCH, y: -dy * LAUNCH });
         launched = true; abilityUsed = false; activeFlight = true; settleTimer = 0;
         var abilityAt = s.delay === undefined ? -1 : Math.round(s.delay / STEP);
