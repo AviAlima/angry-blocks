@@ -9,6 +9,7 @@
   --panel: rgba(0, 0, 0, 0.32);
   --panel-border: rgba(255, 255, 255, 0.14);
   --text: #eef4fa;
+  --game-w: min(1400px, 96vw, 108vh);
 }
 
 html, body { height: 100%; }
@@ -31,7 +32,7 @@ body {
 }
 
 header {
-  width: min(1000px, 96vw);
+  width: var(--game-w);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -137,8 +138,45 @@ button.ghost {
 
 .icon-btn.muted { opacity: 0.45; }
 
+#fullscreen { display: none; }
+
+@media (hover: none) and (pointer: coarse) {
+  #fullscreen { display: inline-flex; align-items: center; justify-content: center; }
+}
+
+body.immersive { background: #000; padding: 0; gap: 0; }
+body.immersive header {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  width: auto;
+  justify-content: flex-end;
+  z-index: 30;
+  pointer-events: none;
+}
+body.immersive header h1,
+body.immersive .levelbar-wrap,
+body.immersive .hint,
+body.immersive .hud > *:not(#fullscreen) { display: none; }
+body.immersive #fullscreen { pointer-events: auto; opacity: 0.85; }
+
+body.immersive .stage {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(100vw, calc(100vh * 5 / 3));
+  width: min(100vw, calc(100dvh * 5 / 3));
+  height: min(100vh, calc(100vw * 3 / 5));
+  height: min(100dvh, calc(100vw * 3 / 5));
+  border-radius: 0;
+  box-shadow: none;
+  background: #000;
+  z-index: 10;
+}
+
 .levelbar {
-  width: min(1000px, 96vw);
+  width: 100%;
   display: flex;
   gap: 8px;
   justify-content: center;
@@ -146,7 +184,7 @@ button.ghost {
 }
 
 .levelbar-wrap {
-  width: min(1000px, 96vw);
+  width: var(--game-w);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -183,7 +221,7 @@ button.ghost {
 
 .stage {
   position: relative;
-  width: min(1000px, 96vw);
+  width: var(--game-w);
   aspect-ratio: 1000 / 600;
   border-radius: 18px;
   overflow: hidden;

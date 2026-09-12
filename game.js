@@ -452,11 +452,11 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
   }
 
   canvas.addEventListener("mousedown", onDown);
-  canvas.addEventListener("mousemove", onMove);
+  window.addEventListener("mousemove", onMove);
   window.addEventListener("mouseup", onUp);
   canvas.addEventListener("touchstart", function (e) { e.preventDefault(); onDown(e); }, { passive: false });
-  canvas.addEventListener("touchmove", function (e) { e.preventDefault(); onMove(e); }, { passive: false });
-  canvas.addEventListener("touchend", function (e) { e.preventDefault(); onUp(e); }, { passive: false });
+  window.addEventListener("touchmove", function (e) { if (!dragging) return; e.preventDefault(); onMove(e); }, { passive: false });
+  window.addEventListener("touchend", function (e) { if (!dragging) return; e.preventDefault(); onUp(e); }, { passive: false });
   window.addEventListener("keydown", function (e) {
     if (e.code === "Space") { e.preventDefault(); if (activeFlight) triggerAbility(); }
     if (e.code === "KeyR") resetLevel();
@@ -1336,6 +1336,56 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     soundBtn.textContent = muted ? "\u266A\u0338" : "\u266A";
     if (!muted) unlock();
   });
+
+  var fullscreenBtn = document.getElementById("fullscreen");
+  /** @type {any} */ var fsDoc = document;
+  /** @type {any} */ var fsRoot = document.documentElement;
+  /** @type {any} */ var fsScreen = screen;
+
+  function nativeFullscreenElement() {
+    return fsDoc.fullscreenElement || fsDoc.webkitFullscreenElement || null;
+  }
+  function requestNativeFullscreen() {
+    var fn = fsRoot.requestFullscreen || fsRoot.webkitRequestFullscreen || fsRoot.webkitRequestFullScreen;
+    if (!fn) return Promise.reject(new Error("fullscreen unsupported"));
+    try { return Promise.resolve(fn.call(fsRoot)); }
+    catch (err) { return Promise.reject(err); }
+  }
+  function exitNativeFullscreen() {
+    var fn = fsDoc.exitFullscreen || fsDoc.webkitExitFullscreen || fsDoc.webkitCancelFullScreen;
+    if (!fn) return Promise.resolve();
+    try { return Promise.resolve(fn.call(fsDoc)); }
+    catch (err) { return Promise.reject(err); }
+  }
+  function lockLandscape() {
+    if (fsScreen.orientation && fsScreen.orientation.lock) {
+      try { var p = fsScreen.orientation.lock("landscape"); if (p && p.catch) p.catch(function () {}); } catch (err) {}
+    }
+  }
+
+  function setImmersive(on) {
+    document.body.classList.toggle("immersive", on);
+    fullscreenBtn.textContent = on ? "\u2715" : "\u26F6";
+    fullscreenBtn.title = on ? "Exit fullscreen" : "Fullscreen";
+  }
+
+  fullscreenBtn.addEventListener("click", function () {
+    var on = !document.body.classList.contains("immersive");
+    setImmersive(on);
+    if (on) {
+      requestNativeFullscreen().then(lockLandscape).catch(function () {});
+    } else {
+      exitNativeFullscreen().catch(function () {});
+    }
+  });
+
+  function onFullscreenChange() {
+    if (!nativeFullscreenElement() && document.body.classList.contains("immersive")) {
+      setImmersive(false);
+    }
+  }
+  document.addEventListener("fullscreenchange", onFullscreenChange);
+  document.addEventListener("webkitfullscreenchange", onFullscreenChange);
 
   function updateParticles(dt) {
     var f = dt / STEP;
