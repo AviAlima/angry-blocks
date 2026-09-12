@@ -19,6 +19,33 @@
   canvas.height = H * DPR;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
+  var bgLayer = document.createElement("canvas");
+  bgLayer.width = W * DPR;
+  bgLayer.height = H * DPR;
+  var bgCtx = bgLayer.getContext("2d");
+  bgCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+  var fxLayer = document.createElement("canvas");
+  fxLayer.width = W * DPR;
+  fxLayer.height = H * DPR;
+  var fxCtx = fxLayer.getContext("2d");
+  fxCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+  function makeGrain(size) {
+    var c = document.createElement("canvas");
+    c.width = c.height = size;
+    var g = c.getContext("2d");
+    for (var i = 0; i < size * size * 0.14; i++) {
+      var x = Math.random() * size, y = Math.random() * size, r = 0.5 + Math.random() * 1.1;
+      g.fillStyle = Math.random() < 0.5 ? "rgba(0,0,0,0.13)" : "rgba(255,255,255,0.11)";
+      g.beginPath();
+      g.arc(x, y, r, 0, Math.PI * 2);
+      g.fill();
+    }
+    return g.createPattern(c, "repeat");
+  }
+  var grainPattern = makeGrain(96);
+
   var MATERIALS = {
     wood:  { density: 0.0016, friction: 0.62, frictionStatic: 0.92, restitution: 0.04, hp: 19,  score: 120, fill: "#ca8b4d", dark: "#95612c", light: "#e6b076" },
     stone: { density: 0.0038, friction: 0.72, frictionStatic: 1.00, restitution: 0.02, hp: 56,  score: 190, fill: "#9aa3ad", dark: "#69727d", light: "#c6cdd5" },
@@ -67,6 +94,7 @@
   var settleTimer = 0, levelDone = false, losePending = false;
   var score = 0, bestScore = 0;
   var shake = 0, time = 0;
+  var flash = 0, blinking = 0, blinkTimer = 2400;
   var birdQueue = [];
   var currentLevel = 0;
   var unlocked = 1;
@@ -213,13 +241,21 @@
         color: opts.colors[(Math.random() * opts.colors.length) | 0],
         type: opts.type || "dot",
         rot: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 0.4,
-        grav: opts.grav === undefined ? 0.2 : opts.grav
+        grav: opts.grav === undefined ? 0.2 : opts.grav,
+        glow: !!opts.glow
       });
     }
   }
 
+  function addDust(x, y, n) {
+    addParticles(x, y, n, {
+      colors: ["rgba(210,190,150,0.5)", "rgba(160,135,95,0.45)", "rgba(235,225,205,0.45)"],
+      speed: 2.4, r: 5.5, decay: 0.045, grav: -0.02
+    });
+  }
+
   function addPopup(x, y, text, color) { popups.push({ x: x, y: y, text: text, color: color || "#ffe08a", life: 1 }); }
-  function addRing(x, y, r, color, width) { rings.push({ x: x, y: y, r: r, max: r, color: color, width: width || 4, life: 1 }); }
+  function addRing(x, y, r, color, width, glow) { rings.push({ x: x, y: y, r: r, max: r, color: color, width: width || 4, life: 1, glow: !!glow }); }
 
   function burstFor(kind, x, y) {
     var m = MATERIALS[kind] || MATERIALS.wood;
@@ -309,9 +345,10 @@
   function explode(x, y, radius, power) {
     sfxBoom();
     shake = Math.max(shake, 14);
-    addRing(x, y, radius, "rgba(255,200,90,0.9)", 8);
-    addRing(x, y, radius * 0.55, "rgba(255,255,255,0.9)", 6);
-    addParticles(x, y, 34, { colors: ["#ffde7a", "#ff9d3b", "#f2542d", "#6b6b6b", "rgba(120,120,120,0.6)"], speed: 9, r: 9, decay: 0.022, grav: 0.05 });
+    flash = Math.max(flash, 0.9);
+    addRing(x, y, radius, "rgba(255,200,90,0.9)", 8, true);
+    addRing(x, y, radius * 0.55, "rgba(255,255,255,0.9)", 6, true);
+    addParticles(x, y, 34, { colors: ["#ffde7a", "#ff9d3b", "#f2542d", "#6b6b6b", "rgba(120,120,120,0.6)"], speed: 9, r: 9, decay: 0.022, grav: 0.05, glow: true });
     addParticles(x, y, 14, { colors: ["rgba(90,90,90,0.55)", "rgba(160,160,160,0.45)"], speed: 4, r: 16, decay: 0.02, grav: -0.06 });
 
     var all = blocks.concat(pigs);
@@ -344,6 +381,9 @@
       var contact = pair.collision && pair.collision.supports && pair.collision.supports[0]
         ? pair.collision.supports[0]
         : { x: (a.position.x + b.position.x) / 2, y: (a.position.y + b.position.y) / 2 };
+      if (rel > 3.5 && (a.label === "ground" || b.label === "ground")) {
+        addDust(contact.x, Math.min(contact.y, GROUND_Y - 2), Math.min(6, 1 + rel * 0.5));
+      }
       var pairs = [[a, b], [b, a]];
       for (var k = 0; k < 2; k++) {
         var self = pairs[k][0], other = pairs[k][1];
@@ -474,6 +514,7 @@
     if (bird) World.remove(world, bird);
     blocks = []; pigs = []; debris = []; birds = []; particles = []; popups = []; rings = [];
     bird = null; score = 0; levelDone = false; activeFlight = false; dragging = false; losePending = false;
+    flash = 0; blinking = 0;
     buildLevel(currentLevel);
   }
 
@@ -765,7 +806,7 @@
     c.closePath();
   }
 
-  function drawBackground() {
+  function paintSky() {
     var sky = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
     sky.addColorStop(0, "#3f8fd4");
     sky.addColorStop(0.45, "#8ec9ef");
@@ -784,14 +825,36 @@
     ctx.fillStyle = "#fff3c4";
     ctx.fill();
 
-    ctx.fillStyle = "rgba(255,255,255,0.75)";
+    ctx.fillStyle = "rgba(220,238,250,0.55)";
+    ctx.fillRect(0, GROUND_Y - 46, W, 46);
+
+    drawHills(GROUND_Y - 6, "#a9d2e6", 0.15, 134, 0.32);
+    drawHills(GROUND_Y + 10, "#6fa9c9", 0.5, 90, 0.6);
+    drawHills(GROUND_Y + 30, "#5793b6", 1, 60, 1.3);
+  }
+
+  function paintFx() {
+    var v = fxCtx.createRadialGradient(W / 2, H * 0.4, H * 0.32, W / 2, H * 0.5, H * 1.02);
+    v.addColorStop(0, "rgba(0,0,0,0)");
+    v.addColorStop(1, "rgba(6,12,20,0.42)");
+    fxCtx.fillStyle = v;
+    fxCtx.fillRect(0, 0, W, H);
+
+    var warm = fxCtx.createLinearGradient(0, 0, 0, H);
+    warm.addColorStop(0, "rgba(255,214,140,0.07)");
+    warm.addColorStop(0.5, "rgba(255,255,255,0)");
+    warm.addColorStop(1, "rgba(30,24,56,0.12)");
+    fxCtx.fillStyle = warm;
+    fxCtx.fillRect(0, 0, W, H);
+  }
+
+  function drawBackground() {
+    ctx.drawImage(bgLayer, 0, 0, W, H);
+
     for (var i = 0; i < clouds.length; i++) {
       var cl = clouds[i];
       drawCloud(cl.x, cl.y, cl.s);
     }
-
-    drawHills(GROUND_Y + 10, "#6fa9c9", 0.5, 90, 0.6);
-    drawHills(GROUND_Y + 30, "#5793b6", 1, 60, 1.3);
 
     for (var b = 0; b < bgBirds.length; b++) {
       var bird = bgBirds[b];
@@ -816,7 +879,11 @@
     ctx.arc(30, 6, 20, 0, Math.PI * 2);
     ctx.arc(-28, 8, 18, 0, Math.PI * 2);
     ctx.arc(8, -14, 20, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    var g = ctx.createLinearGradient(0, -34, 0, 30);
+    g.addColorStop(0, "rgba(255,255,255,0.96)");
+    g.addColorStop(0.55, "rgba(248,252,255,0.84)");
+    g.addColorStop(1, "rgba(184,210,230,0.88)");
+    ctx.fillStyle = g;
     ctx.fill();
     ctx.restore();
   }
@@ -952,6 +1019,28 @@
     roundRect(ctx, x, y, w, h, r);
     ctx.stroke();
 
+    if (!m.icy && p.kind !== "tnt") {
+      ctx.save();
+      roundRect(ctx, x, y, w, h, r);
+      ctx.clip();
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = grainPattern;
+      ctx.fillRect(x, y, w, h);
+      ctx.restore();
+    }
+
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "rgba(255,255,255,0.28)";
+    ctx.beginPath();
+    ctx.moveTo(x + r * 0.7, y + 1.5);
+    ctx.lineTo(x + w - r * 0.7, y + 1.5);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(0,0,0,0.15)";
+    ctx.beginPath();
+    ctx.moveTo(x + r * 0.7, y + h - 1.5);
+    ctx.lineTo(x + w - r * 0.7, y + h - 1.5);
+    ctx.stroke();
+
     if (p.kind === "wood") {
       ctx.strokeStyle = "rgba(90,50,15,0.35)";
       ctx.lineWidth = 1.5;
@@ -1074,21 +1163,44 @@
     ctx.arc(r * 0.16, r * 0.26, r * 0.09, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = "#fff";
-    ctx.beginPath();
-    ctx.arc(-r * 0.33, -r * 0.22, r * 0.24, 0, Math.PI * 2);
-    ctx.arc(r * 0.33, -r * 0.22, r * 0.24, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#1f2430";
-    ctx.beginPath();
-    ctx.arc(-r * 0.3, -r * 0.22, r * 0.11, 0, Math.PI * 2);
-    ctx.arc(r * 0.3, -r * 0.22, r * 0.11, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
-    ctx.beginPath();
-    ctx.arc(-r * 0.34, -r * 0.28, r * 0.04, 0, Math.PI * 2);
-    ctx.arc(r * 0.26, -r * 0.28, r * 0.04, 0, Math.PI * 2);
-    ctx.fill();
+    var gx = 0, gy = 0;
+    var tgt = activeFlight ? (bird || birds[0]) : null;
+    if (tgt) {
+      var dxg = tgt.position.x - p.position.x, dyg = tgt.position.y - p.position.y;
+      var dg = Math.hypot(dxg, dyg) || 1;
+      var ca = Math.cos(-p.angle), sa = Math.sin(-p.angle);
+      gx = (dxg / dg) * ca - (dyg / dg) * sa;
+      gy = (dxg / dg) * sa + (dyg / dg) * ca;
+    }
+    var exo = gx * r * 0.08, eyo = gy * r * 0.08;
+
+    if (blinking > 0.45) {
+      ctx.strokeStyle = "#2a2013";
+      ctx.lineWidth = Math.max(1.5, r * 0.1);
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.arc(-r * 0.33, -r * 0.2, r * 0.2, 0.15 * Math.PI, 0.85 * Math.PI);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(r * 0.33, -r * 0.2, r * 0.2, 0.15 * Math.PI, 0.85 * Math.PI);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = "#fff";
+      ctx.beginPath();
+      ctx.arc(-r * 0.33, -r * 0.22, r * 0.24, 0, Math.PI * 2);
+      ctx.arc(r * 0.33, -r * 0.22, r * 0.24, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#1f2430";
+      ctx.beginPath();
+      ctx.arc(-r * 0.3 + exo, -r * 0.22 + eyo, r * 0.11, 0, Math.PI * 2);
+      ctx.arc(r * 0.3 + exo, -r * 0.22 + eyo, r * 0.11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.beginPath();
+      ctx.arc(-r * 0.34 + exo, -r * 0.28 + eyo, r * 0.04, 0, Math.PI * 2);
+      ctx.arc(r * 0.26 + exo, -r * 0.28 + eyo, r * 0.04, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     ctx.strokeStyle = "#2a2013";
     ctx.lineWidth = Math.max(1.5, r * 0.09);
@@ -1150,10 +1262,15 @@
     var r = t.r;
     ctx.save();
     ctx.translate(body.position.x, body.position.y);
-    ctx.rotate(body.angle);
 
     var ang = body.velocity ? Math.atan2(body.velocity.y, body.velocity.x) : 0;
     var speed = body.velocity ? Math.hypot(body.velocity.x, body.velocity.y) : 0;
+    var stretch = 1 + Math.min(speed * 0.02, 0.32);
+    ctx.rotate(ang);
+    ctx.scale(stretch, 1 / stretch);
+    ctx.rotate(-ang);
+    ctx.rotate(body.angle);
+
     var flap = speed > 1 ? Math.sin(time * 0.02) * 0.5 : 0;
 
     ctx.shadowColor = "rgba(0,0,0,0.3)";
@@ -1189,6 +1306,17 @@
     ctx.beginPath();
     ctx.ellipse(-r * 0.15, -r * 0.05, r * 0.55, r * 0.42, -0.3 + flap, 0, Math.PI * 2);
     ctx.fill();
+
+    ctx.strokeStyle = "rgba(0,0,0,0.22)";
+    ctx.lineWidth = 1;
+    ctx.lineCap = "round";
+    for (var f = 0; f < 3; f++) {
+      var fx = -r * 0.45 + f * r * 0.17;
+      ctx.beginPath();
+      ctx.moveTo(fx, -r * 0.26);
+      ctx.lineTo(fx - r * 0.08, r * 0.24);
+      ctx.stroke();
+    }
 
     ctx.fillStyle = t.beak;
     ctx.beginPath();
@@ -1282,9 +1410,31 @@
     }
   }
 
+  function drawSpeedLines(b) {
+    var sp = Math.hypot(b.velocity.x, b.velocity.y);
+    if (sp < 6) return;
+    var t = BIRD_TYPES[b.plugin.type];
+    var a = Math.atan2(b.velocity.y, b.velocity.x);
+    var len = t.r * 1.6 + sp * 1.2;
+    var alpha = Math.min(0.5, (sp - 5) * 0.04);
+    ctx.save();
+    ctx.translate(b.position.x, b.position.y);
+    ctx.rotate(a);
+    ctx.strokeStyle = "rgba(255,255,255," + alpha + ")";
+    ctx.lineCap = "round";
+    for (var i = 0; i < 3; i++) {
+      var yy = (i - 1) * t.r * 0.5;
+      ctx.lineWidth = 2 - i * 0.4;
+      ctx.beginPath();
+      ctx.moveTo(-t.r * 1.2, yy);
+      ctx.lineTo(-t.r * 1.2 - len, yy);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawParticles() {
-    for (var i = 0; i < particles.length; i++) {
-      var p = particles[i];
+    function drawOne(p) {
       ctx.save();
       ctx.globalAlpha = Math.max(0, p.life);
       ctx.translate(p.x, p.y);
@@ -1303,18 +1453,33 @@
       }
       ctx.restore();
     }
+    var i, p, anyGlow = false;
+    for (i = 0; i < particles.length; i++) {
+      p = particles[i];
+      if (p.glow) anyGlow = true; else drawOne(p);
+    }
+    if (anyGlow) {
+      ctx.globalCompositeOperation = "lighter";
+      for (i = 0; i < particles.length; i++) {
+        p = particles[i];
+        if (p.glow) drawOne(p);
+      }
+      ctx.globalCompositeOperation = "source-over";
+    }
     ctx.globalAlpha = 1;
   }
 
   function drawRings() {
     for (var i = 0; i < rings.length; i++) {
       var r = rings[i];
+      if (r.glow) ctx.globalCompositeOperation = "lighter";
       ctx.beginPath();
       ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
       ctx.strokeStyle = r.color;
       ctx.globalAlpha = Math.max(0, r.life);
       ctx.lineWidth = r.width * r.life;
       ctx.stroke();
+      if (r.glow) ctx.globalCompositeOperation = "source-over";
     }
     ctx.globalAlpha = 1;
   }
@@ -1390,6 +1555,40 @@
     ctx.globalAlpha = 1;
   }
 
+  function shadowFor(body, halfW, halfH) {
+    var h = GROUND_Y - body.position.y;
+    if (h < -40) return;
+    var lift = clamp(h / 460, 0, 1);
+    var alpha = 0.30 * (1 - lift) + 0.03;
+    if (alpha < 0.05) return;
+    var w = halfW * (1 + lift * 0.55);
+    var hh = Math.max(2.5, halfH * 0.34) * (1 + lift * 0.5);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "#152230";
+    ctx.beginPath();
+    ctx.ellipse(body.position.x, GROUND_Y + 6, w, hh, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawShadows() {
+    for (var i = 0; i < blocks.length; i++) {
+      var bp = blocks[i].plugin;
+      shadowFor(blocks[i], bp.w * 0.5, bp.h * 0.5);
+    }
+    for (var j = 0; j < pigs.length; j++) {
+      var pr = pigs[j].plugin.r;
+      shadowFor(pigs[j], pr * 1.05, pr * 0.9);
+    }
+    if (bird) shadowFor(bird, BIRD_TYPES[bird.plugin.type].r * 1.05, BIRD_TYPES[bird.plugin.type].r * 0.9);
+    for (var k = 0; k < birds.length; k++) {
+      if (birds[k] === bird) continue;
+      var bt = BIRD_TYPES[birds[k].plugin.type];
+      shadowFor(birds[k], bt.r * 1.05, bt.r * 0.9);
+    }
+  }
+
   function settleWorld(maxSteps) {
     for (var i = 0; i < maxSteps; i++) {
       Engine.update(engine, STEP);
@@ -1460,6 +1659,10 @@
 
     if (shake > 0.1) shake *= 0.88; else shake = 0;
 
+    blinkTimer -= frame;
+    if (blinkTimer <= 0 && blinking <= 0) { blinking = 1; blinkTimer = 2200 + Math.random() * 2600; }
+    if (blinking > 0) blinking -= frame / 110; else blinking = 0;
+
     for (var i = 0; i < clouds.length; i++) {
       clouds[i].x += clouds[i].v * (frame / STEP);
       if (clouds[i].x > W + 80) clouds[i].x = -80;
@@ -1479,14 +1682,15 @@
 
     drawBackground();
     drawGround();
+    drawShadows();
     drawTrail();
 
     blocks.forEach(drawBlock);
     drawDebris();
     pigs.forEach(drawPig);
-    if (bird) drawBirdShape(bird, bird.plugin.type);
+    if (bird) { drawSpeedLines(bird); drawBirdShape(bird, bird.plugin.type); }
     for (var k = 0; k < birds.length; k++) {
-      if (birds[k] !== bird) drawBirdShape(birds[k], birds[k].plugin.type);
+      if (birds[k] !== bird) { drawSpeedLines(birds[k]); drawBirdShape(birds[k], birds[k].plugin.type); }
     }
     drawSling();
     drawTrajectory();
@@ -1496,8 +1700,22 @@
     drawPopups();
 
     ctx.restore();
+    if (flash > 0.01) {
+      ctx.fillStyle = "rgba(255,238,200," + (flash * 0.6) + ")";
+      ctx.fillRect(0, 0, W, H);
+      flash *= 0.8;
+    } else flash = 0;
+    ctx.drawImage(fxLayer, 0, 0, W, H);
     requestAnimationFrame(loop);
   }
+
+  (function cacheStaticLayers() {
+    var real = ctx;
+    ctx = bgCtx;
+    paintSky();
+    ctx = real;
+    paintFx();
+  })();
 
   loadProgress();
   buildLevel(currentLevel);
