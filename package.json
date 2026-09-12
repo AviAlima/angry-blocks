@@ -1,0 +1,11 @@
+{
+  "name": "angry-blocks",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Physics slingshot game",
+  "devDependencies": {
+    "three": "^0.160.0",
+    "@types/three": "^0.160.0",
+    "typescript": "^5.9.3"
+  }
+}
