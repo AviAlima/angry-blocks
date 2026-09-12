@@ -15,13 +15,7 @@ const CAM_LOOK = { x: 0, y: -55, z: 70 };
 const FxShader = {
   uniforms: {
     tDiffuse: { value: null },
-    time: { value: 0 },
-    shockA: { value: 0 },
-    shockR: { value: 0 },
-    shockPos: { value: new THREE.Vector2(0.5, 0.5) },
-    vignette: { value: 0.34 },
-    grain: { value: 0.05 },
-    aberr: { value: 0.0016 }
+    vignette: { value: 0.3 }
   },
   vertexShader: [
     "varying vec2 vUv;",
@@ -32,34 +26,13 @@ const FxShader = {
   ].join("\n"),
   fragmentShader: [
     "uniform sampler2D tDiffuse;",
-    "uniform float time;",
-    "uniform float shockA;",
-    "uniform float shockR;",
-    "uniform vec2 shockPos;",
     "uniform float vignette;",
-    "uniform float grain;",
-    "uniform float aberr;",
     "varying vec2 vUv;",
-    "float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }",
     "void main() {",
-    "  vec2 uv = vUv;",
-    "  vec2 d = uv - shockPos;",
-    "  float dist = length(d);",
-    "  if (shockA > 0.001) {",
-    "    float ring = exp(-pow((dist - shockR) / 0.06, 2.0));",
-    "    uv += normalize(d + 1e-5) * ring * shockA * 0.09;",
-    "  }",
-    "  float amt = aberr * (1.0 + shockA * 2.0);",
-    "  float r = texture2D(tDiffuse, uv + vec2(amt, 0.0)).r;",
-    "  float g = texture2D(tDiffuse, uv).g;",
-    "  float b = texture2D(tDiffuse, uv - vec2(amt, 0.0)).b;",
-    "  vec3 col = vec3(r, g, b);",
-    "  float lum = dot(col, vec3(0.299, 0.587, 0.114));",
-    "  col = mix(col, col * 1.06, smoothstep(0.75, 1.0, lum));",
+    "  vec4 col = texture2D(tDiffuse, vUv);",
     "  float vd = distance(vUv, vec2(0.5));",
-    "  col *= 1.0 - vignette * smoothstep(0.42, 0.86, vd);",
-    "  col += (hash(vUv * 1024.0 + time) - 0.5) * grain;",
-    "  gl_FragColor = vec4(col, 1.0);",
+    "  col.rgb *= 1.0 - vignette * smoothstep(0.42, 0.9, vd);",
+    "  gl_FragColor = col;",
     "}"
   ].join("\n")
 };
@@ -70,11 +43,6 @@ let composer, bloomPass, gtaoPass, fxPass;
 let frameStamp = 1;
 const camSmooth = { x: 0, y: 0, fov: 0 };
 let prevLaunched = false;
-let shockA = 0, shockR = 0;
-const shockVec = new THREE.Vector2(0.5, 0.5);
-const projVec = new THREE.Vector3();
-let trailTick = 0;
-let lastImpact = null;
 
 const blockMeshes = new Map();
 const pigMeshes = new Map();
@@ -311,15 +279,13 @@ function buildTextures() {
   tex.env.mapping = THREE.EquirectangularReflectionMapping;
 
   const normalSpec = [
-    ["wood", tex.wood, 5.5, null],
-    ["stone", tex.stone, 9, null],
-    ["ice", tex.ice, 4, null],
-    ["glass", tex.glass, 3, null],
-    ["metal", tex.metal, 5, null],
-    ["sand", tex.sand, 6, null],
-    ["tnt", tex.tnt, 6, null],
-    ["grass", tex.grass, 7, [45, 22]],
-    ["dirt", tex.dirt, 8, [40, 6]]
+    ["wood", tex.wood, 3.2, null],
+    ["stone", tex.stone, 5, null],
+    ["ice", tex.ice, 2.5, null],
+    ["glass", tex.glass, 2, null],
+    ["metal", tex.metal, 3, null],
+    ["sand", tex.sand, 3.5, null],
+    ["tnt", tex.tnt, 3.5, null]
   ];
   normalSpec.forEach((spec) => {
     const n = normalFromCanvas(spec[1].image, spec[2]);
@@ -334,7 +300,7 @@ const outIce = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true,
 const outMetal = new THREE.LineBasicMaterial({ color: 0x333a44, transparent: true, opacity: 0.35 });
 
 function blockMaterial(kind) {
-  const nscale = new THREE.Vector2(0.7, 0.7);
+  const nscale = new THREE.Vector2(0.45, 0.45);
   switch (kind) {
     case "stone": return new THREE.MeshStandardMaterial({ map: tex.stone, normalMap: tex.stoneNorm, normalScale: nscale, roughness: 0.92, metalness: 0.04, envMapIntensity: 0.55 });
     case "ice": return new THREE.MeshStandardMaterial({ map: tex.ice, normalMap: tex.iceNorm, normalScale: nscale, roughness: 0.08, metalness: 0.10, transparent: true, opacity: 0.66, emissive: 0x2a6b90, emissiveIntensity: 0.18, envMapIntensity: 1.35 });
@@ -561,8 +527,8 @@ export function init(canvas) {
   scene.add(root);
 
   const groundGeo = new THREE.BoxGeometry(4200, 600, 2000);
-  const topMat = new THREE.MeshStandardMaterial({ map: tex.grass, normalMap: tex.grassNorm, normalScale: new THREE.Vector2(0.6, 0.6), roughness: 1, metalness: 0, envMapIntensity: 0.45 });
-  const sideMat = new THREE.MeshStandardMaterial({ map: tex.dirt, normalMap: tex.dirtNorm, normalScale: new THREE.Vector2(0.6, 0.6), roughness: 1, metalness: 0, envMapIntensity: 0.35 });
+  const topMat = new THREE.MeshStandardMaterial({ map: tex.grass, roughness: 1, metalness: 0, envMapIntensity: 0.45 });
+  const sideMat = new THREE.MeshStandardMaterial({ map: tex.dirt, roughness: 1, metalness: 0, envMapIntensity: 0.35 });
   const ground = new THREE.Mesh(groundGeo, [sideMat, sideMat, topMat, sideMat, sideMat, sideMat]);
   ground.position.set(0, GROUND_TOP - 300, 0);
   ground.receiveShadow = true;
@@ -1024,23 +990,7 @@ export function render() {
 
   flashQuad.material.opacity = Math.max(0, Math.min(1, s.flash || 0)) * 0.6;
 
-  if (s.impact && s.impact !== lastImpact) {
-    lastImpact = s.impact;
-    projVec.set(wx(s.impact.x), wy(s.impact.y), 0).project(camera);
-    shockVec.set(projVec.x * 0.5 + 0.5, projVec.y * 0.5 + 0.5);
-    shockA = Math.min(1, shockA + (s.impact.p || 1));
-    shockR = 0;
-  }
-  shockR += 0.018;
-  shockA *= 0.9;
-  fxPass.uniforms.time.value = s.time * 0.001;
-  fxPass.uniforms.shockA.value = shockA;
-  fxPass.uniforms.shockR.value = shockR;
-  fxPass.uniforms.shockPos.value.copy(shockVec);
-  fxPass.uniforms.grain.value = 0.032 + slow * 0.02;
-  fxPass.uniforms.vignette.value = 0.3 + slow * 0.06;
-  fxPass.uniforms.aberr.value = 0.0009 + slow * 0.0008;
-
+  fxPass.uniforms.vignette.value = 0.3;
   bloomPass.strength = 0.42 + slow * 0.14;
 
   composer.render();
