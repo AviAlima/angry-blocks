@@ -1243,7 +1243,11 @@ function syncBirds() {
     const wing = mesh.userData.wing;
     if (wing) wing.rotation.x = speed > 1 ? Math.sin(state.time * 0.02) * 0.6 : 0;
     const spark = mesh.getObjectByName("spark");
-    if (spark) spark.material.color.setHex(Math.sin(state.time * 0.03) > 0 ? 0xffd166 : 0xff7a3d);
+    if (spark) {
+      const tw = 0.5 + 0.5 * Math.sin(state.time * 0.012);
+      spark.material.color.setRGB(1, 0.72 + 0.1 * tw, 0.28 + 0.35 * tw);
+      spark.scale.setScalar(0.85 + tw * 0.4);
+    }
     seen(mesh);
   }
   birdMeshes.forEach((mesh, id) => {
@@ -1493,7 +1497,7 @@ function syncQueue() {
       queueGroup.add(g);
     }
     const bob = Math.sin(state.time * 0.004 + i) * 2;
-    g.position.set(wx(state.slingX - 60 - i * 34), GROUND_TOP + BIRD_TYPES[q[i]].r + 2 + bob, 0);
+    g.position.set(wx(state.slingX - 60 - i * 46), GROUND_TOP + BIRD_TYPES[q[i]].r + 2 + bob, 0);
     g.rotation.z = 0;
   }
 }

@@ -44,7 +44,13 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
   engine.gravity.y = 1;
   engine.positionIterations = 8;
   engine.velocityIterations = 6;
+  engine.enableSleeping = true;
   var world = engine.world;
+
+  function wake(body) {
+    if (!body) return;
+    if (M.Sleeping && body.isSleeping) M.Sleeping.set(body, false);
+  }
 
   var CAT = { ground: 0x0001, block: 0x0002, pig: 0x0004, bird: 0x0008, debris: 0x0010 };
 
@@ -195,12 +201,12 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
   }
 
   function tower(cx, bottom, tiers, kind, pigs) {
-    var th = 68;
+    var th = 68, beamH = 13, legH = th - beamH;
     for (var i = 0; i < tiers; i++) {
       var b = bottom - i * th;
-      beam(cx - 38, b, 15, th, kind);
-      beam(cx + 38, b, 15, th, kind);
-      beam(cx, b - th, 108, 13, kind, i === tiers - 1 ? "roof" : null);
+      beam(cx - 38, b, 15, legH, kind);
+      beam(cx + 38, b, 15, legH, kind);
+      beam(cx, b - legH, 108, beamH, kind, i === tiers - 1 ? "roof" : null);
       if (pigs && pigs[i]) pigAt(cx, b, pigs[i]);
     }
   }
@@ -362,6 +368,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
       var nx = dx / d, ny = dy / d;
       var vx = b.velocity.x + nx * power * f;
       var vy = b.velocity.y + ny * power * f - 3 * f;
+      wake(b);
       Body.setVelocity(b, { x: vx, y: vy });
       Body.setAngularVelocity(b, (rnd() - 0.5) * 0.5 * f);
       applyDamage(b, power * f * 1.5, { x: b.position.x, y: b.position.y });
@@ -523,6 +530,56 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     buildLevel(currentLevel);
   }
 
+  function separateOverlaps() {
+    for (var iter = 0; iter < 24; iter++) {
+      var moved = false;
+      for (var i = 0; i < blocks.length; i++) {
+        var a = blocks[i], aw = a.plugin.w / 2, ah = a.plugin.h / 2;
+        for (var j = i + 1; j < blocks.length; j++) {
+          var b = blocks[j], bw = b.plugin.w / 2, bh = b.plugin.h / 2;
+          var dx = b.position.x - a.position.x;
+          var px = aw + bw - Math.abs(dx);
+          if (px <= 0.05) continue;
+          var dy = b.position.y - a.position.y;
+          var py = ah + bh - Math.abs(dy);
+          if (py <= 0.05) continue;
+          moved = true;
+          if (py <= px) {
+            var sy = py / 2, gy = dy < 0 ? -sy : sy;
+            Body.setPosition(a, { x: a.position.x, y: a.position.y - gy });
+            Body.setPosition(b, { x: b.position.x, y: b.position.y + gy });
+          } else {
+            var sx = px / 2, gx = dx < 0 ? -sx : sx;
+            Body.setPosition(a, { x: a.position.x - gx, y: a.position.y });
+            Body.setPosition(b, { x: b.position.x + gx, y: b.position.y });
+          }
+        }
+      }
+      for (var p = 0; p < pigs.length; p++) {
+        var pig = pigs[p], r = pig.plugin.r;
+        for (var k = 0; k < blocks.length; k++) {
+          var blk = blocks[k], hw = blk.plugin.w / 2, hh = blk.plugin.h / 2;
+          var cx = clamp(pig.position.x, blk.position.x - hw, blk.position.x + hw);
+          var cy = clamp(pig.position.y, blk.position.y - hh, blk.position.y + hh);
+          var ddx = pig.position.x - cx, ddy = pig.position.y - cy;
+          var dist = Math.hypot(ddx, ddy);
+          if (dist >= r - 0.05) continue;
+          moved = true;
+          if (dist < 0.0001) {
+            var ox = hw + r - Math.abs(pig.position.x - blk.position.x);
+            var oy = hh + r - Math.abs(pig.position.y - blk.position.y);
+            if (oy <= ox) Body.setPosition(pig, { x: pig.position.x, y: pig.position.y + (pig.position.y < blk.position.y ? -oy : oy) });
+            else Body.setPosition(pig, { x: pig.position.x + (pig.position.x < blk.position.x ? -ox : ox), y: pig.position.y });
+          } else {
+            var push = r - dist + 0.1;
+            Body.setPosition(pig, { x: pig.position.x + ddx / dist * push, y: pig.position.y + ddy / dist * push });
+          }
+        }
+      }
+      if (!moved) break;
+    }
+  }
+
   function buildLevel(idx) {
     var lvl = LEVELS[idx];
     currentWorld = worldIndexOf(idx);
@@ -530,7 +587,8 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     score = 0;
     birdQueue = lvl.birds.slice();
     lvl.build();
-    for (var w = 0; w < 150; w++) { Engine.update(engine, STEP); }
+    separateOverlaps();
+    for (var w = 0; w < 300; w++) { Engine.update(engine, STEP); }
     spawnNextBird();
     updateHud();
     updateLevelBar();
@@ -705,7 +763,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
           birds: ["red", "yellow", "red", "blue", "red"],
           build: function () {
             var bx = 650;
-            tower(bx - 70, GROUND_Y, 2, "wood", ["small", "small"]);
+            tower(bx - 70, GROUND_Y, 3, "wood", ["small", "small"]);
             tower(bx + 70, GROUND_Y, 3, "wood", [null, "small", "medium"]);
             beam(bx, GROUND_Y - 204, 220, 20, "wood");
             pigAt(bx, GROUND_Y - 224, "big");
@@ -894,7 +952,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
           birds: ["black", "yellow", "black", "red", "blue", "yellow"],
           build: function () {
             var bx = 650;
-            tower(bx - 80, GROUND_Y, 2, "stone", ["small", "small"]);
+            tower(bx - 80, GROUND_Y, 3, "stone", ["small", "small"]);
             tower(bx + 80, GROUND_Y, 3, "stone", [null, "small", "medium"]);
             beam(bx, GROUND_Y - 204, 260, 20, "stone");
             pigAt(bx - 40, GROUND_Y - 224, "small");
@@ -987,7 +1045,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
           birds: ["black", "black", "yellow", "blue", "black", "red"],
           build: function () {
             var bx = 650;
-            tower(bx - 90, GROUND_Y, 2, "metal", ["small", "small"]);
+            tower(bx - 90, GROUND_Y, 3, "metal", ["small", "small"]);
             tower(bx + 90, GROUND_Y, 3, "metal", [null, "medium", "small"]);
             beam(bx, GROUND_Y - 204, 300, 22, "stone");
             pigAt(bx - 50, GROUND_Y - 226, "small");
@@ -1041,12 +1099,12 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
           birds: ["blue", "blue", "yellow", "black"],
           build: function () {
             var bx = 650;
-            beam(bx - 90, GROUND_Y, 16, 100, "ice");
+            beam(bx - 90, GROUND_Y, 16, 130, "ice");
             beam(bx, GROUND_Y, 16, 130, "glass");
-            beam(bx + 90, GROUND_Y, 16, 100, "ice");
+            beam(bx + 90, GROUND_Y, 16, 130, "ice");
             beam(bx, GROUND_Y - 130, 230, 16, "glass");
-            pigAt(bx - 90, GROUND_Y, "small");
-            pigAt(bx + 90, GROUND_Y, "small");
+            pigAt(bx - 45, GROUND_Y, "small");
+            pigAt(bx + 45, GROUND_Y, "small");
             pigAt(bx, GROUND_Y - 146, "small");
           }
         },
@@ -1118,7 +1176,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
             pigAt(bx + 205, GROUND_Y - 140, "medium");
             pigAt(bx + 90, GROUND_Y - 240, "small");
             pigAt(bx + 200, GROUND_Y - 240, "small");
-            beam(bx + 380, GROUND_Y, 44, 44, "tnt");
+            beam(bx + 330, GROUND_Y, 44, 44, "tnt");
           }
         },
         {
