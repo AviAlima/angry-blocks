@@ -337,6 +337,24 @@ canvas {
 }
 .worldmap-head p { font-size: 13px; opacity: 0.7; margin-top: 4px; }
 
+.cheat-row { display: flex; gap: 8px; justify-content: center; align-items: center; margin-top: 12px; }
+.cheat-row input {
+  width: min(180px, 46vw);
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: lowercase;
+  text-align: center;
+}
+.cheat-row input::placeholder { letter-spacing: normal; opacity: 0.5; font-weight: 600; }
+.cheat-row input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(255, 176, 32, 0.4); }
+.cheat-msg { min-height: 18px; font-size: 13px; font-weight: 800; color: var(--accent-2); margin-top: 6px; }
+
 .world-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

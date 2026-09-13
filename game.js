@@ -103,6 +103,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
   var currentWorld = 0;
   var starsByLevel = {};
   var LEVELS_PER_WORLD = 6;
+  var cheatUnlocked = false;
   var muted = false;
   var simMode = false;
   var gen = 0;
@@ -703,7 +704,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
 
   function persistKey() { return "angryblocks.progress.v1"; }
   function saveProgress() {
-    try { localStorage.setItem(persistKey(), JSON.stringify({ stars: starsByLevel })); } catch (e) {}
+    try { localStorage.setItem(persistKey(), JSON.stringify({ stars: starsByLevel, cheat: cheatUnlocked })); } catch (e) {}
   }
   function loadProgress() {
     try {
@@ -711,6 +712,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
       if (!raw) return;
       var p = JSON.parse(raw);
       starsByLevel = p.stars || {};
+      cheatUnlocked = !!p.cheat;
     } catch (e) {}
   }
 
@@ -1311,8 +1313,13 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     }
     return true;
   }
-  function isWorldUnlocked(wi) { return true; }
-  function isLevelUnlocked(gi) { return true; }
+  function isWorldUnlocked(wi) { return cheatUnlocked || wi === 0 || worldCleared(wi - 1); }
+  function isLevelUnlocked(gi) {
+    var wi = worldIndexOf(gi), slot = gi % LEVELS_PER_WORLD;
+    if (cheatUnlocked) return true;
+    if (!isWorldUnlocked(wi)) return false;
+    return slot === 0 || starsByLevel[gi - 1] >= 1;
+  }
   function highestUnlockedInWorld(wi) {
     var base = wi * LEVELS_PER_WORLD, best = base;
     for (var i = 0; i < LEVELS_PER_WORLD; i++) if (isLevelUnlocked(base + i)) best = base + i;
@@ -1334,6 +1341,11 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
   var worldsBtn = document.getElementById("worlds");
   var worldMapEl = document.getElementById("worldmap");
   var worldGridEl = document.getElementById("world-grid");
+  var cheatInput = document.getElementById("cheat-input");
+  var cheatSubmit = document.getElementById("cheat-submit");
+  var cheatMsg = document.getElementById("cheat-msg");
+  var CHEAT_CODE = "iddqd";
+  var cheatBuffer = "";
 
   function updateWorldTitle() {
     var w = WORLDS[currentWorld];
@@ -1382,6 +1394,33 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
       worldGridEl.appendChild(card);
     });
   }
+
+  function tryCheat(value) {
+    if (cheatUnlocked) return true;
+    if (String(value || "").trim().toLowerCase() !== CHEAT_CODE) return false;
+    cheatUnlocked = true;
+    saveProgress();
+    buildWorldMap();
+    if (cheatMsg) cheatMsg.textContent = "All worlds unlocked!";
+    if (cheatInput) cheatInput.value = "";
+    tone(660, 0.12, "triangle", 0.14, 990);
+    return true;
+  }
+
+  if (cheatSubmit) cheatSubmit.addEventListener("click", function () { tryCheat(cheatInput.value); });
+  if (cheatInput) {
+    cheatInput.addEventListener("input", function () { tryCheat(cheatInput.value); });
+    cheatInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); tryCheat(cheatInput.value); cheatInput.blur(); }
+    });
+  }
+  window.addEventListener("keydown", function (e) {
+    if (cheatUnlocked || !worldMapEl.classList.contains("show")) return;
+    if (cheatInput && document.activeElement === cheatInput) return;
+    if (!e.key || e.key.length !== 1) return;
+    cheatBuffer = (cheatBuffer + e.key.toLowerCase()).slice(-CHEAT_CODE.length);
+    if (cheatBuffer === CHEAT_CODE) { cheatBuffer = ""; tryCheat(CHEAT_CODE); }
+  });
 
   function updateHud() {
     scoreEl.textContent = "Score " + score;
