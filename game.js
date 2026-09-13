@@ -44,12 +44,38 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
   engine.gravity.y = 1;
   engine.positionIterations = 8;
   engine.velocityIterations = 6;
-  engine.enableSleeping = true;
   var world = engine.world;
 
-  function wake(body) {
-    if (!body) return;
-    if (M.Sleeping && body.isSleeping) M.Sleeping.set(body, false);
+  var structureFrozen = false;
+  var calmMs = 0;
+
+  function freezeStructure() {
+    if (structureFrozen) return;
+    structureFrozen = true;
+    for (var i = 0; i < blocks.length; i++) Body.setStatic(blocks[i], true);
+    for (var p = 0; p < pigs.length; p++) Body.setStatic(pigs[p], true);
+  }
+  function thawStructure() {
+    if (!structureFrozen) return;
+    structureFrozen = false;
+    calmMs = 0;
+    for (var i = 0; i < blocks.length; i++) Body.setStatic(blocks[i], false);
+    for (var p = 0; p < pigs.length; p++) Body.setStatic(pigs[p], false);
+  }
+  function updateStability(frame) {
+    if (activeFlight || launched) { calmMs = 0; thawStructure(); return; }
+    if (structureFrozen) { calmMs += frame; return; }
+    var moving = false;
+    for (var i = 0; i < blocks.length && !moving; i++) {
+      var b = blocks[i];
+      if (b.velocity.x * b.velocity.x + b.velocity.y * b.velocity.y > 0.09 || Math.abs(b.angularVelocity) > 0.15) moving = true;
+    }
+    for (var p = 0; p < pigs.length && !moving; p++) {
+      var pg = pigs[p];
+      if (pg.velocity.x * pg.velocity.x + pg.velocity.y * pg.velocity.y > 0.09 || Math.abs(pg.angularVelocity) > 0.15) moving = true;
+    }
+    if (moving) calmMs = 0;
+    else { calmMs += frame; if (calmMs > 1200) freezeStructure(); }
   }
 
   var CAT = { ground: 0x0001, block: 0x0002, pig: 0x0004, bird: 0x0008, debris: 0x0010 };
@@ -348,6 +374,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
   }
 
   function explode(x, y, radius, power) {
+    thawStructure();
     sfxBoom();
     shake = Math.max(shake, 14);
     flash = Math.max(flash, 0.9);
@@ -368,7 +395,6 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
       var nx = dx / d, ny = dy / d;
       var vx = b.velocity.x + nx * power * f;
       var vy = b.velocity.y + ny * power * f - 3 * f;
-      wake(b);
       Body.setVelocity(b, { x: vx, y: vy });
       Body.setAngularVelocity(b, (rnd() - 0.5) * 0.5 * f);
       applyDamage(b, power * f * 1.5, { x: b.position.x, y: b.position.y });
@@ -376,6 +402,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
   }
 
   Events.on(engine, "collisionStart", function (evt) {
+    thawStructure();
     for (var i = 0; i < evt.pairs.length; i++) {
       var pair = evt.pairs[i];
       var a = pair.bodyA, b = pair.bodyB;
@@ -453,10 +480,10 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
       return;
     }
     Body.setStatic(bird, false);
-    wake(bird);
     Body.setVelocity(bird, { x: -pullVec.x * LAUNCH, y: -pullVec.y * LAUNCH });
     Body.setAngularVelocity(bird, -0.12);
     launched = true; abilityUsed = false; activeFlight = true; settleTimer = 0;
+    thawStructure();
     sfxLaunch();
     updateHud();
   }
@@ -527,6 +554,7 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     if (bird) World.remove(world, bird);
     blocks = []; pigs = []; debris = []; birds = []; particles = []; popups = []; rings = [];
     bird = null; score = 0; levelDone = false; activeFlight = false; dragging = false; losePending = false;
+    structureFrozen = false; calmMs = 0;
     flash = 0; blinking = 0; slowmo = 0; impact = null;
     buildLevel(currentLevel);
   }
@@ -602,7 +630,6 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     var type = birdQueue.shift();
     bird = makeBird(SLING_X, SLING_Y, type);
     Body.setStatic(bird, true);
-    wake(bird);
     World.add(world, bird);
     birds.push(bird);
     launched = false; abilityUsed = false; activeFlight = false;
@@ -1581,6 +1608,8 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     }
     if (guard >= 5) acc = 0;
 
+    updateStability(frame);
+
     updateParticles(frame);
     updateDebris(frame);
     updateFlight(frame);
@@ -1660,9 +1689,9 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
       pullVec = { x: dx, y: dy };
       Body.setPosition(bird, { x: SLING_X + dx, y: SLING_Y + dy });
       Body.setStatic(bird, false);
-      wake(bird);
       Body.setVelocity(bird, { x: -dx * LAUNCH, y: -dy * LAUNCH });
       launched = true; abilityUsed = false; activeFlight = true; settleTimer = 0;
+      thawStructure();
       updateHud();
       if (abilityDelayMs !== undefined) {
         var g = gen;
@@ -1687,9 +1716,9 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
         pullVec = { x: dx, y: dy };
         Body.setPosition(bird, { x: SLING_X + dx, y: SLING_Y + dy });
         Body.setStatic(bird, false);
-        wake(bird);
         Body.setVelocity(bird, { x: -dx * LAUNCH, y: -dy * LAUNCH });
         launched = true; abilityUsed = false; activeFlight = true; settleTimer = 0;
+        thawStructure();
         var abilityAt = s.delay === undefined ? -1 : Math.round(s.delay / STEP);
         var steps = 0, lastAbility = -999;
         while (steps < 1200 && !levelDone) {
