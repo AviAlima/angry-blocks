@@ -443,6 +443,12 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
   function pointerPos(e) {
     var rect = canvas.getBoundingClientRect();
     var p = e.touches && e.touches.length ? e.touches[0] : (e.changedTouches && e.changedTouches.length ? e.changedTouches[0] : e);
+    if (viewRotated()) {
+      return {
+        x: (p.clientY - rect.top) * (W / rect.height),
+        y: (rect.left + rect.width - p.clientX) * (H / rect.width)
+      };
+    }
     return {
       x: (p.clientX - rect.left) * (W / rect.width),
       y: (p.clientY - rect.top) * (H / rect.height)
@@ -1499,6 +1505,10 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     fullscreenBtn.title = on ? "Exit fullscreen" : "Fullscreen";
   }
 
+  var portraitQuery = window.matchMedia ? window.matchMedia("(orientation: portrait)") : null;
+  function isPortrait() { return !!(portraitQuery && portraitQuery.matches); }
+  function viewRotated() { return document.body.classList.contains("immersive") && isPortrait(); }
+
   function isStandalone() {
     if (/** @type {any} */ (window.navigator).standalone === true) return true;
     return !!(window.matchMedia && window.matchMedia("(display-mode: fullscreen), (display-mode: standalone)").matches);
@@ -1521,25 +1531,108 @@ import { init as init3D, setState as setState3D, render as render3D } from "./re
     toastTimer = setTimeout(function () { toastEl.classList.remove("show"); }, ms || 6000);
   }
 
-  fullscreenBtn.addEventListener("click", function () {
-    var on = !document.body.classList.contains("immersive");
-    setImmersive(on);
-    if (on) {
-      requestNativeFullscreen()
-        .then(lockLandscape)
-        .catch(function () {
-          if (isIOS() && !isStandalone()) {
-            showToast("For a true full screen: tap Share \u25B8 Add to Home Screen, then open Angry Blocks from your home screen.");
-          }
-        });
+  var fsExitBtn = document.getElementById("fs-exit");
+  var fsResetBtn = /** @type {any} */ (document.getElementById("fs-reset"));
+  var fsResetFill = fsResetBtn ? /** @type {any} */ (fsResetBtn.querySelector(".fs-reset-fill")) : null;
+  var HOLD_MS = 1000;
+  var holdActive = false, holdStart = 0, holdRaf = 0;
+
+  function setHoldProgress(p) {
+    if (!fsResetBtn) return;
+    if (p > 0) {
+      fsResetBtn.style.transform = "scale(" + (1 + 0.35 * p).toFixed(3) + ")";
+      fsResetBtn.classList.add("holding");
     } else {
-      exitNativeFullscreen().catch(function () {});
+      fsResetBtn.style.transform = "";
+      fsResetBtn.classList.remove("holding");
     }
+    if (fsResetFill) {
+      if (p > 0) fsResetFill.style.transition = "none";
+      fsResetFill.style.transform = "translate(-50%, -50%) scale(" + p.toFixed(3) + ")";
+      fsResetFill.style.opacity = String(p * 0.85);
+    }
+  }
+
+  function releaseHoldVisual() {
+    if (fsResetBtn) {
+      fsResetBtn.style.transition = "transform 0.18s ease";
+      setTimeout(function () { if (fsResetBtn) fsResetBtn.style.transition = ""; }, 220);
+    }
+    if (fsResetFill) {
+      fsResetFill.style.transition = "transform 0.18s ease, opacity 0.18s ease";
+      setTimeout(function () { if (fsResetFill) fsResetFill.style.transition = ""; }, 220);
+    }
+    setHoldProgress(0);
+  }
+
+  function stopHold() {
+    if (!holdActive) return;
+    holdActive = false;
+    cancelAnimationFrame(holdRaf);
+    releaseHoldVisual();
+  }
+
+  function completeHold() {
+    holdActive = false;
+    cancelAnimationFrame(holdRaf);
+    releaseHoldVisual();
+    if (navigator.vibrate) { try { navigator.vibrate(18); } catch (err) {} }
+    hideOverlay();
+    hideWorldMap();
+    resetLevel();
+    showToast("Level restarted");
+  }
+
+  function holdTick(now) {
+    if (!holdActive) return;
+    var p = Math.min(1, (now - holdStart) / HOLD_MS);
+    setHoldProgress(p);
+    if (p >= 1) { completeHold(); return; }
+    holdRaf = requestAnimationFrame(holdTick);
+  }
+
+  if (fsResetBtn) {
+    fsResetBtn.addEventListener("pointerdown", function (e) {
+      e.preventDefault();
+      if (holdActive) return;
+      holdActive = true;
+      holdStart = (window.performance && performance.now) ? performance.now() : Date.now();
+      fsResetBtn.style.transition = "";
+      try { fsResetBtn.setPointerCapture(e.pointerId); } catch (err) {}
+      holdRaf = requestAnimationFrame(holdTick);
+    });
+    fsResetBtn.addEventListener("pointerup", function (e) { e.preventDefault(); stopHold(); });
+    fsResetBtn.addEventListener("pointercancel", stopHold);
+    fsResetBtn.addEventListener("lostpointercapture", stopHold);
+    fsResetBtn.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+  }
+
+  function enterImmersive() {
+    setImmersive(true);
+    requestNativeFullscreen()
+      .then(lockLandscape)
+      .catch(function () {
+        if (isIOS() && !isStandalone()) {
+          showToast("For a true full screen: tap Share \u25B8 Add to Home Screen, then open Angry Blocks from your home screen.");
+        }
+      });
+  }
+  function leaveImmersive() {
+    setImmersive(false);
+    stopHold();
+    exitNativeFullscreen().catch(function () {});
+  }
+
+  fullscreenBtn.addEventListener("click", function () {
+    if (document.body.classList.contains("immersive")) leaveImmersive();
+    else enterImmersive();
   });
+  if (fsExitBtn) fsExitBtn.addEventListener("click", leaveImmersive);
 
   function onFullscreenChange() {
     if (!nativeFullscreenElement() && document.body.classList.contains("immersive")) {
       setImmersive(false);
+      stopHold();
     }
   }
   document.addEventListener("fullscreenchange", onFullscreenChange);
